@@ -70,6 +70,10 @@ beforeEach(() => {
   layout.compact = true;
   navigationState.search = "";
   configStore.getState().setFeatureFlags({});
+  configStore.getState().setAuthConfig({
+    allowSignup: true,
+    githubIntegrationAvailable: true,
+  });
   replace.mockClear();
 });
 
@@ -161,5 +165,21 @@ describe("SettingsPage workspace subscription feature flag", () => {
 
     expect(screen.getByRole("tab", { name: "Billing" })).toBeInTheDocument();
     expect(screen.getByText("BillingTab")).toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage GitHub deployment gate", () => {
+  it("hides GitHub and redirects its direct tab URL to Integrations", () => {
+    navigationState.search = "tab=github";
+    configStore.getState().setAuthConfig({
+      allowSignup: true,
+      githubIntegrationAvailable: false,
+    });
+
+    renderWithI18n(<SettingsPage />);
+
+    expect(screen.queryByRole("tab", { name: "GitHub" })).not.toBeInTheDocument();
+    expect(screen.queryByText("GitHubTab")).not.toBeInTheDocument();
+    expect(screen.getByText("IntegrationsTab")).toBeInTheDocument();
   });
 });

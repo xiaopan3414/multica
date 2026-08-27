@@ -13,6 +13,7 @@ import {
 } from "../auth";
 import type { StorageAdapter, User, Workspace } from "../types";
 import { workspaceKeys } from "../workspace/queries";
+import { configStore } from "../config";
 import { AuthInitializer } from "./auth-initializer";
 
 const logger = vi.hoisted(() => ({
@@ -109,6 +110,7 @@ function renderInitializer({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  configStore.getState().setAuthConfig({ allowSignup: true });
 });
 
 afterEach(() => {
@@ -242,6 +244,24 @@ describe("AuthInitializer recovery", () => {
     await waitFor(() => {
       expect(useAuthStore.getState().status).toBe("authenticated");
       expect(getConfig).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("publishes private deployment auth UI settings", async () => {
+    const api = makeApi({
+      getConfig: vi.fn().mockResolvedValue({
+        allow_signup: true,
+        verification_code_delivery_hint: "Check Feiq for the code.",
+        github_integration_available: false,
+      }),
+    });
+    renderInitializer({ api });
+
+    await waitFor(() => {
+      expect(configStore.getState().verificationCodeDeliveryHint).toBe(
+        "Check Feiq for the code.",
+      );
+      expect(configStore.getState().githubIntegrationAvailable).toBe(false);
     });
   });
 

@@ -21,6 +21,7 @@ import {
 import { useAuthStore } from "@multica/core/auth";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import { api } from "@multica/core/api";
+import { useConfigStore } from "@multica/core/config";
 import type { User } from "@multica/core/types";
 import { useT } from "../i18n";
 
@@ -108,6 +109,9 @@ export function LoginPage({
 }: LoginPageProps) {
   const { t } = useT("auth");
   const qc = useQueryClient();
+  const verificationCodeDeliveryHint = useConfigStore(
+    (state) => state.verificationCodeDeliveryHint,
+  ).trim();
   const [step, setStep] = useState<"email" | "code" | "cli_confirm">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -341,13 +345,25 @@ export function LoginPage({
           <CardHeader className="text-center">
             {logo && <div className="mx-auto mb-4">{logo}</div>}
             <CardTitle className="text-display-sm">
-              {t(($) => $.verify.title)}
+              {verificationCodeDeliveryHint
+                ? t(($) => $.verify.code_title)
+                : t(($) => $.verify.title)}
             </CardTitle>
             <CardDescription>
-              {t(($) => $.verify.description, { email })}
+              {verificationCodeDeliveryHint
+                ? t(($) => $.verify.code_description, { email })
+                : t(($) => $.verify.description, { email })}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
+            {verificationCodeDeliveryHint ? (
+              <p
+                role="status"
+                className="w-full border-l-2 border-primary pl-3 text-left text-body text-foreground"
+              >
+                {verificationCodeDeliveryHint}
+              </p>
+            ) : null}
             <InputOTP
               autoFocus
               maxLength={6}

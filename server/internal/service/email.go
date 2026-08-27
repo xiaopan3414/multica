@@ -337,7 +337,7 @@ func (s *EmailService) sendSMTP(to, subject, htmlBody string) error {
 // SendVerificationCode sends a one-time login code. The code is server-generated
 // (6-digit numeric) so no user-controlled text reaches the email body here.
 // Delivery priority: SMTP relay → Resend API → DEV stdout.
-func (s *EmailService) SendVerificationCode(to, code string) error {
+func (s *EmailService) SendVerificationCode(to, code, clientIP string) error {
 	body := fmt.Sprintf(
 		`<div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
 			<h2>Your verification code</h2>
@@ -350,7 +350,7 @@ func (s *EmailService) SendVerificationCode(to, code string) error {
 		return s.sendSMTP(to, "Your Multica verification code", body)
 	}
 	if s.client == nil {
-		fmt.Printf("[DEV] Verification code for %s: %s\n", to, code)
+		fmt.Printf("[DEV] Verification code for %s: %s client_ip=%s\n", to, code, clientIP)
 		return nil
 	}
 	params := &resend.SendEmailRequest{

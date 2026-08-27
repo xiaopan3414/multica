@@ -46,6 +46,7 @@ import {
   githubInstallationsOptions,
 } from "@multica/core/github";
 import { api } from "@multica/core/api";
+import { useConfigStore } from "@multica/core/config";
 import type {
   GitHubRepository,
   Workspace,
@@ -110,6 +111,9 @@ export function RepositoriesTab() {
   const wsId = useWorkspaceId();
   const queryClient = useQueryClient();
   const navigation = useNavigation();
+  const githubIntegrationAvailable = useConfigStore(
+    (state) => state.githubIntegrationAvailable,
+  );
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const [repositories, setRepositories] = useState<WorkspaceRepo[]>(
     workspace?.repos ?? EMPTY_REPOSITORIES,
@@ -132,7 +136,7 @@ export function RepositoriesTab() {
     isFetching: githubInstallationsFetching,
   } = useQuery({
     ...githubInstallationsOptions(wsId),
-    enabled: !!wsId && canManageWorkspace,
+    enabled: githubIntegrationAvailable && !!wsId && canManageWorkspace,
   });
   const githubInstallations = useMemo(
     () => githubData?.installations ?? [],
@@ -144,6 +148,7 @@ export function RepositoriesTab() {
   const githubRepositoriesQuery = useInfiniteQuery({
     ...githubInstallationRepositoriesOptions(wsId, selectedInstallationID),
     enabled:
+      githubIntegrationAvailable &&
       githubPickerOpen &&
       canManageWorkspace &&
       githubBrowseConfigured &&
@@ -193,6 +198,7 @@ export function RepositoriesTab() {
   }, [githubInstallations, selectedInstallationID]);
 
   useEffect(() => {
+    if (!githubIntegrationAvailable) return;
     const connected = navigation.searchParams.get("github_connected") === "1";
     const githubError = navigation.searchParams.get("github_error");
     if ((!connected && !githubError) || !canManageWorkspace) return;
@@ -219,6 +225,7 @@ export function RepositoriesTab() {
     navigation.replace(`${navigation.pathname}${search ? `?${search}` : ""}`);
   }, [
     canManageWorkspace,
+    githubIntegrationAvailable,
     githubBrowseConfigured,
     githubInstallations,
     githubInstallationsFetching,
@@ -436,30 +443,32 @@ export function RepositoriesTab() {
                   <Plus className="size-3.5" />
                   {t(($) => $.repositories.add)}
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={handleGitHubAction}
-                  disabled={
-                    connectingGitHub ||
-                    !githubBrowseConfigured ||
-                    (!githubConnectConfigured &&
-                      githubInstallations.length === 0)
-                  }
-                  title={
-                    !githubBrowseConfigured
-                      ? t(($) => $.repositories.github_browse_not_configured)
-                      : undefined
-                  }
-                >
-                  {connectingGitHub ? (
-                    <LoaderCircle className="size-3.5 animate-spin" />
-                  ) : (
-                    <GitHubMark className="size-3.5" />
-                  )}
-                  {githubInstallations.length > 0
-                    ? t(($) => $.repositories.choose_from_github)
-                    : t(($) => $.repositories.connect_github)}
-                </Button>
+                {githubIntegrationAvailable ? (
+                  <Button
+                    size="sm"
+                    onClick={handleGitHubAction}
+                    disabled={
+                      connectingGitHub ||
+                      !githubBrowseConfigured ||
+                      (!githubConnectConfigured &&
+                        githubInstallations.length === 0)
+                    }
+                    title={
+                      !githubBrowseConfigured
+                        ? t(($) => $.repositories.github_browse_not_configured)
+                        : undefined
+                    }
+                  >
+                    {connectingGitHub ? (
+                      <LoaderCircle className="size-3.5 animate-spin" />
+                    ) : (
+                      <GitHubMark className="size-3.5" />
+                    )}
+                    {githubInstallations.length > 0
+                      ? t(($) => $.repositories.choose_from_github)
+                      : t(($) => $.repositories.connect_github)}
+                  </Button>
+                ) : null}
               </div>
               {!allUrlsValid ? (
                 <span className="text-caption text-muted-foreground">
@@ -476,7 +485,7 @@ export function RepositoriesTab() {
       </SettingsSection>
 
       <Dialog
-        open={githubPickerOpen}
+        open={githubIntegrationAvailable && githubPickerOpen}
         onOpenChange={(open) => {
           if (!open) closeGitHubPicker();
         }}

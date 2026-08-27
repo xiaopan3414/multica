@@ -236,6 +236,16 @@ describe("PinRow", () => {
   });
 });
 
+describe("sidebar footer", () => {
+  it("does not render the post-login Discord promotion", () => {
+    render(<AppSidebar />);
+
+    expect(
+      screen.queryByRole("link", { name: /join our discord/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 // On a phone the sidebar is a Sheet laid over the page, so a nav tap that
 // leaves it open renders the destination underneath and reads as a dead tap.
 describe("mobile sheet dismissal", () => {

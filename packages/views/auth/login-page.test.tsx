@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configStore } from "@multica/core/config";
 import enCommon from "../locales/en/common.json";
 import enAuth from "../locales/en/auth.json";
 import enSettings from "../locales/en/settings.json";
@@ -98,6 +99,7 @@ describe("LoginPage", () => {
     vi.clearAllMocks();
     // Default: no existing session (getMe rejects when no auth)
     mockApiGetMe.mockRejectedValue(new Error("unauthorized"));
+    configStore.getState().setAuthConfig({ allowSignup: true });
     localStorage.clear();
     // Reset window.location for tests that change it
     Object.defineProperty(window, "location", {
@@ -196,6 +198,26 @@ describe("LoginPage", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText(/test@example.com/)).toBeInTheDocument();
+  });
+
+  it("shows the operator delivery hint instead of telling the user to check email", async () => {
+    configStore.getState().setAuthConfig({
+      allowSignup: true,
+      verificationCodeDeliveryHint:
+        "The verification code is in your Feiq messages.",
+    });
+    mockSendCode.mockResolvedValueOnce(undefined);
+    renderWithI18n(<LoginPage onSuccess={onSuccess} />);
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/email/i), "test@example.com");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "The verification code is in your Feiq messages.",
+    );
+    expect(screen.getByText("Enter verification code")).toBeInTheDocument();
+    expect(screen.queryByText("Check your email")).not.toBeInTheDocument();
   });
 
   it("autofocuses the OTP input when the code step opens", async () => {

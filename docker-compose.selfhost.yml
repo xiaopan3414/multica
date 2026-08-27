@@ -70,6 +70,7 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@multica.ai}
+      VERIFICATION_CODE_DELIVERY_HINT: ${VERIFICATION_CODE_DELIVERY_HINT:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-25}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
@@ -119,6 +120,7 @@ services:
       MULTICA_SUBSCRIPTION_CAPACITY_URL: ${MULTICA_SUBSCRIPTION_CAPACITY_URL:-}
       MULTICA_SUBSCRIPTION_CAPACITY_SERVICE_TOKEN: ${MULTICA_SUBSCRIPTION_CAPACITY_SERVICE_TOKEN:-}
       MULTICA_SUBSCRIPTION_CAPACITY_TIMEOUT: ${MULTICA_SUBSCRIPTION_CAPACITY_TIMEOUT:-3s}
+      GITHUB_INTEGRATION_ENABLED: ${GITHUB_INTEGRATION_ENABLED:-true}
       GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       # App API credentials. The pull_request webhook is what mirrors a PR
@@ -151,7 +153,8 @@ services:
       # used for public webhook URLs; otherwise MULTICA_PUBLIC_URL is used.
       MULTICA_DAEMON_SERVER_URL: ${MULTICA_DAEMON_SERVER_URL:-}
       # Comma-separated CIDRs whose source IP is allowed to set
-      # X-Forwarded-For / X-Real-IP for the webhook per-IP rate limiter.
+      # X-Forwarded-For / X-Real-IP for the webhook per-IP rate limiter and
+      # verification-code delivery log.
       # Empty default = headers ignored, RemoteAddr used. Set e.g.
       # "127.0.0.1/32" when running behind a same-host reverse proxy.
       MULTICA_TRUSTED_PROXIES: ${MULTICA_TRUSTED_PROXIES:-}

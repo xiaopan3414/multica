@@ -520,3 +520,27 @@ func TestGetConfigDeclaresLocalWorktreeSupport(t *testing.T) {
 		t.Fatal("local_worktree_supported missing from the JSON body")
 	}
 }
+
+func TestGetConfigExposesPrivateDeploymentAuthUISettings(t *testing.T) {
+	t.Setenv("VERIFICATION_CODE_DELIVERY_HINT", "  Check Feiq for the verification code.  ")
+	t.Setenv("GITHUB_INTEGRATION_ENABLED", "false")
+
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	w := httptest.NewRecorder()
+	h.GetConfig(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GetConfig: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var cfg AppConfig
+	if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if cfg.VerificationCodeDeliveryHint != "Check Feiq for the verification code." {
+		t.Fatalf("verification_code_delivery_hint = %q", cfg.VerificationCodeDeliveryHint)
+	}
+	if cfg.GitHubIntegrationAvailable {
+		t.Fatal("github_integration_available: want false when explicitly disabled")
+	}
+}

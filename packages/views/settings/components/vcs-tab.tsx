@@ -53,7 +53,7 @@ export function VCSTab() {
   const configured = data?.configured === true;
   const canManage = data?.can_manage === true;
 
-  const [provider, setProvider] = useState<VCSProvider>("forgejo");
+  const [provider, setProvider] = useState<VCSProvider>("gitlab");
   const [instanceUrl, setInstanceUrl] = useState("");
   const [token, setToken] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -235,7 +235,7 @@ export function VCSTab() {
                   <Label htmlFor="vcs-url">{t(($) => $.vcs.form_instance_url_label)}</Label>
                   <Input
                     id="vcs-url"
-                    placeholder="https://forgejo.example.com"
+                    placeholder="https://gitlab.example.com"
                     value={instanceUrl}
                     onChange={(e) => setInstanceUrl(e.target.value)}
                     disabled={connecting}

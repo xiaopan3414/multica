@@ -654,6 +654,8 @@ describe("ApiClient schema fallback", () => {
         allow_signup: true,
         daemon_server_url: { wrong: "shape" },
         daemon_app_url: 123,
+        verification_code_delivery_hint: { wrong: "shape" },
+        github_integration_available: "no",
         workspace_creation_disabled: false,
         feature_flags: { composio_mcp_apps: true },
       });
@@ -663,7 +665,24 @@ describe("ApiClient schema fallback", () => {
       expect(config.allow_signup).toBe(true);
       expect(config.daemon_server_url).toBeUndefined();
       expect(config.daemon_app_url).toBeUndefined();
+      expect(config.verification_code_delivery_hint).toBeUndefined();
+      expect(config.github_integration_available).toBe(true);
       expect(config.feature_flags?.composio_mcp_apps).toBe(true);
+    });
+
+    it("keeps private deployment auth UI settings", async () => {
+      stubFetchJson({
+        cdn_domain: "",
+        allow_signup: true,
+        verification_code_delivery_hint: "Check Feiq for the code.",
+        github_integration_available: false,
+      });
+      const client = new ApiClient("https://api.example.test");
+      const config = await client.getConfig();
+      expect(config.verification_code_delivery_hint).toBe(
+        "Check Feiq for the code.",
+      );
+      expect(config.github_integration_available).toBe(false);
     });
   });
 

@@ -25,7 +25,7 @@ import { GitHubMark } from "./github-mark";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@multica/ui/components/ui/tabs";
 import { useIsMobile } from "@multica/ui/hooks/use-mobile";
 import { useCurrentWorkspace } from "@multica/core/paths";
-import { useFeatureEnabled } from "@multica/core/config";
+import { useConfigStore, useFeatureEnabled } from "@multica/core/config";
 import {
   BILLING_WORKSPACE_SUBSCRIPTIONS_FLAG,
   PLUGINS_V1_FLAG,
@@ -143,6 +143,9 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
   const navigation = useNavigation();
   const isMobile = useIsMobile();
   const pluginsEnabled = useFeatureEnabled(PLUGINS_V1_FLAG, false);
+  const githubIntegrationAvailable = useConfigStore(
+    (state) => state.githubIntegrationAvailable,
+  );
   const billingEnabled = useFeatureEnabled(
     BILLING_WORKSPACE_SUBSCRIPTIONS_FLAG,
     false,
@@ -153,9 +156,10 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
       WORKSPACE_TAB_KEYS.filter(
         (key) =>
           (key !== "plugins" || pluginsEnabled) &&
-          (key !== "billing" || billingEnabled),
+          (key !== "billing" || billingEnabled) &&
+          (key !== "github" || githubIntegrationAvailable),
       ),
-    [billingEnabled, pluginsEnabled],
+    [billingEnabled, githubIntegrationAvailable, pluginsEnabled],
   );
 
   // Whitelist of valid tab values; unknown ?tab=… values silently fall back to
@@ -175,6 +179,8 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
   const candidateTab = tabFromUrl
     ? tabFromUrl === "billing" && !billingEnabled
       ? "workspace"
+      : tabFromUrl === "github" && !githubIntegrationAvailable
+        ? "integrations"
       : LEGACY_WORKSPACE_TAB_REDIRECTS[tabFromUrl] ?? tabFromUrl
     : null;
   const activeTab =

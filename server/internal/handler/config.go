@@ -25,6 +25,12 @@ type AppConfig struct {
 	// toggle signup or wire Google OAuth.
 	AllowSignup    bool   `json:"allow_signup"`
 	GoogleClientID string `json:"google_client_id,omitempty"`
+	// VerificationCodeDeliveryHint lets self-hosted deployments explain an
+	// operator-specific out-of-band delivery channel on the code entry screen.
+	VerificationCodeDeliveryHint string `json:"verification_code_delivery_hint,omitempty"`
+	// GitHubIntegrationAvailable lets private deployments hide the GitHub App
+	// surfaces without removing backend compatibility or stored integration data.
+	GitHubIntegrationAvailable bool `json:"github_integration_available"`
 	// WorkspaceCreationDisabled mirrors the server-side
 	// DISABLE_WORKSPACE_CREATION env var so the UI can hide every
 	// "Create workspace" affordance on self-hosted instances. Omitted
@@ -91,10 +97,14 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config := AppConfig{
 		// A property of this build, not of the deployment: if this code is
 		// running, the save gate is running with it.
-		LocalWorktreeSupported:    true,
-		AllowSignup:               os.Getenv("ALLOW_SIGNUP") != "false",
-		GoogleClientID:            os.Getenv("GOOGLE_CLIENT_ID"),
-		WorkspaceCreationDisabled: os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
+		LocalWorktreeSupported: true,
+		AllowSignup:            os.Getenv("ALLOW_SIGNUP") != "false",
+		GoogleClientID:         os.Getenv("GOOGLE_CLIENT_ID"),
+		VerificationCodeDeliveryHint: strings.TrimSpace(
+			os.Getenv("VERIFICATION_CODE_DELIVERY_HINT"),
+		),
+		GitHubIntegrationAvailable: os.Getenv("GITHUB_INTEGRATION_ENABLED") != "false",
+		WorkspaceCreationDisabled:  os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 	}
 	if h.Storage != nil {
 		config.CdnDomain = h.Storage.CdnDomain()

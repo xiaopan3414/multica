@@ -1,0 +1,144 @@
+name: Build Feiq Offline Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Local Docker image tag
+        required: true
+        default: feiq-v0.4.34.1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: multica
+          POSTGRES_USER: multica
+          POSTGRES_PASSWORD: multica
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U multica -d multica"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://multica:multica@localhost:5432/multica?sslmode=disable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+          cache-dependency-path: server/go.sum
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run backend migrations
+        working-directory: server
+        run: go run ./cmd/migrate up
+
+      - name: Test verification delivery and public config
+        working-directory: server
+        run: |
+          go test ./internal/service -run '^TestSendVerificationCodeDevLogIncludesClientIP$' -count=1
+          go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings)$' -count=1
+
+      - name: Test frontend customizations
+        run: >-
+          pnpm exec vitest run
+          packages/core/api/schema.test.ts
+          packages/core/platform/auth-initializer.test.tsx
+          packages/views/auth/login-page.test.tsx
+          packages/views/layout/app-sidebar.test.tsx
+          packages/views/settings/components/repositories-tab.test.tsx
+          packages/views/settings/components/settings-page.test.tsx
+          packages/views/settings/components/integrations-tab.test.tsx
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  backend-image:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --build-arg VERSION=${{ inputs.image_tag }} \
+            --build-arg COMMIT=${{ github.sha }} \
+            --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            --tag multica-backend:${{ inputs.image_tag }} \
+            --file Dockerfile .
+
+      - name: Export backend image
+        run: |
+          mkdir -p artifacts
+          docker save multica-backend:${{ inputs.image_tag }} | gzip -1 > artifacts/multica-backend-${{ inputs.image_tag }}-linux-amd64.tar.gz
+          sha256sum artifacts/* > artifacts/SHA256SUMS-backend.txt
+          docker image inspect multica-backend:${{ inputs.image_tag }} --format='{{json .RepoTags}} {{.Size}}' > artifacts/backend-image-info.txt
+
+      - name: Upload backend image
+        uses: actions/upload-artifact@v4
+        with:
+          name: multica-backend-${{ inputs.image_tag }}-linux-amd64
+          path: artifacts/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+  web-image:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build web image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --build-arg NEXT_PUBLIC_APP_VERSION=${{ inputs.image_tag }} \
+            --tag multica-web:${{ inputs.image_tag }} \
+            --file Dockerfile.web .
+
+      - name: Export web image
+        run: |
+          mkdir -p artifacts
+          docker save multica-web:${{ inputs.image_tag }} | gzip -1 > artifacts/multica-web-${{ inputs.image_tag }}-linux-amd64.tar.gz
+          sha256sum artifacts/* > artifacts/SHA256SUMS-web.txt
+          docker image inspect multica-web:${{ inputs.image_tag }} --format='{{json .RepoTags}} {{.Size}}' > artifacts/web-image-info.txt
+
+      - name: Upload web image
+        uses: actions/upload-artifact@v4
+        with:
+          name: multica-web-${{ inputs.image_tag }}-linux-amd64
+          path: artifacts/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error

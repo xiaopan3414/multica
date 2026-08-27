@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configStore } from "@multica/core/config";
 import enCommon from "../../locales/en/common.json";
 import enSettings from "../../locales/en/settings.json";
 
@@ -144,6 +145,10 @@ function I18nWrapper({ children }: { children: ReactNode }) {
 describe("RepositoriesTab — automatic updates", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    configStore.getState().setAuthConfig({
+      allowSignup: true,
+      githubIntegrationAvailable: true,
+    });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     workspaceRef.current = {
       id: "workspace-1",
@@ -190,6 +195,20 @@ describe("RepositoriesTab — automatic updates", () => {
     expect(inputs).toHaveLength(2);
     expect(inputs[0]!.value).toBe("https://github.com/multica-ai/multica");
     expect(screen.queryByRole("button", { name: /^Save$/ })).toBeNull();
+  });
+
+  it("hides the GitHub repository connection when disabled by the deployment", () => {
+    configStore.getState().setAuthConfig({
+      allowSignup: true,
+      githubIntegrationAvailable: false,
+    });
+
+    render(<RepositoriesTab />, { wrapper: I18nWrapper });
+
+    expect(
+      screen.queryByRole("button", { name: /GitHub/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add repository/ })).toBeInTheDocument();
   });
 
   it("updates a changed URL automatically on blur", async () => {

@@ -69,6 +69,8 @@ export function AuthInitializer({
         configStore.getState().setAuthConfig({
           allowSignup: cfg.allow_signup,
           googleClientId: cfg.google_client_id,
+          verificationCodeDeliveryHint: cfg.verification_code_delivery_hint,
+          githubIntegrationAvailable: cfg.github_integration_available !== false,
           // Old servers omit this field — treat that as "creation allowed"
           // (the managed-cloud default) rather than blocking the UI.
           workspaceCreationDisabled: cfg.workspace_creation_disabled === true,

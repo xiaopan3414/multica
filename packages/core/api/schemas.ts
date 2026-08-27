@@ -728,6 +728,8 @@ export interface AppConfigResponse {
   cdn_signed?: boolean;
   allow_signup: boolean;
   google_client_id?: string;
+  verification_code_delivery_hint?: string;
+  github_integration_available?: boolean;
   posthog_key?: string;
   posthog_host?: string;
   analytics_environment?: string;
@@ -934,6 +936,8 @@ export const AppConfigSchema = z.object({
   cdn_signed: BooleanWithDefaultSchema(false),
   allow_signup: BooleanWithDefaultSchema(true),
   google_client_id: OptionalStringSchema,
+  verification_code_delivery_hint: OptionalStringSchema,
+  github_integration_available: BooleanWithDefaultSchema(true),
   posthog_key: OptionalStringSchema,
   posthog_host: OptionalStringSchema,
   analytics_environment: OptionalStringSchema,
@@ -951,6 +955,8 @@ export const EMPTY_APP_CONFIG: AppConfigResponse = {
   cdn_signed: false,
   allow_signup: true,
   google_client_id: "",
+  verification_code_delivery_hint: "",
+  github_integration_available: true,
   daemon_server_url: "",
   daemon_app_url: "",
   workspace_creation_disabled: false,

@@ -9,6 +9,8 @@ interface ConfigState {
   cdnSigned: boolean;
   allowSignup: boolean;
   googleClientId: string;
+  verificationCodeDeliveryHint: string;
+  githubIntegrationAvailable: boolean;
   daemonServerUrl: string;
   daemonAppUrl: string;
   // Self-host gate (#3433): when true, every "Create workspace" affordance
@@ -36,6 +38,8 @@ interface ConfigState {
   setAuthConfig: (config: {
     allowSignup: boolean;
     googleClientId?: string;
+    verificationCodeDeliveryHint?: string;
+    githubIntegrationAvailable?: boolean;
     workspaceCreationDisabled?: boolean;
     vcsIntegrationAvailable?: boolean;
   }) => void;
@@ -53,6 +57,8 @@ export const configStore = createStore<ConfigState>((set) => ({
   cdnSigned: false,
   allowSignup: true,
   googleClientId: "",
+  verificationCodeDeliveryHint: "",
+  githubIntegrationAvailable: true,
   daemonServerUrl: "",
   daemonAppUrl: "",
   workspaceCreationDisabled: false,
@@ -64,9 +70,18 @@ export const configStore = createStore<ConfigState>((set) => ({
   setAuthConfig: ({
     allowSignup,
     googleClientId = "",
+    verificationCodeDeliveryHint = "",
+    githubIntegrationAvailable = true,
     workspaceCreationDisabled = false,
     vcsIntegrationAvailable = false,
-  }) => set({ allowSignup, googleClientId, workspaceCreationDisabled, vcsIntegrationAvailable }),
+  }) => set({
+    allowSignup,
+    googleClientId,
+    verificationCodeDeliveryHint,
+    githubIntegrationAvailable,
+    workspaceCreationDisabled,
+    vcsIntegrationAvailable,
+  }),
   setDaemonConfig: ({ daemonServerUrl = "", daemonAppUrl = "" }) =>
     set({ daemonServerUrl, daemonAppUrl }),
   setFeatureFlags: (flags = {}) => set({ featureFlags: { ...flags } }),
