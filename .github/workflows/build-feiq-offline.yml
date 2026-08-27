@@ -67,12 +67,12 @@ jobs:
 
       - name: Test core configuration
         working-directory: packages/core
-        run: pnpm test -- api/schema.test.ts platform/auth-initializer.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts platform/auth-initializer.test.tsx
 
       - name: Test shared views
         working-directory: packages/views
         run: >-
-          pnpm test --
+          pnpm exec vitest run
           auth/login-page.test.tsx
           layout/app-sidebar.test.tsx
           settings/components/repositories-tab.test.tsx
