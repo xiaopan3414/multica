@@ -65,16 +65,19 @@ jobs:
           go test ./internal/service -run '^TestSendVerificationCodeDevLogIncludesClientIP$' -count=1
           go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings)$' -count=1
 
-      - name: Test frontend customizations
+      - name: Test core configuration
+        working-directory: packages/core
+        run: pnpm test -- api/schema.test.ts platform/auth-initializer.test.tsx
+
+      - name: Test shared views
+        working-directory: packages/views
         run: >-
-          pnpm exec vitest run
-          packages/core/api/schema.test.ts
-          packages/core/platform/auth-initializer.test.tsx
-          packages/views/auth/login-page.test.tsx
-          packages/views/layout/app-sidebar.test.tsx
-          packages/views/settings/components/repositories-tab.test.tsx
-          packages/views/settings/components/settings-page.test.tsx
-          packages/views/settings/components/integrations-tab.test.tsx
+          pnpm test --
+          auth/login-page.test.tsx
+          layout/app-sidebar.test.tsx
+          settings/components/repositories-tab.test.tsx
+          settings/components/settings-page.test.tsx
+          settings/components/integrations-tab.test.tsx
 
       - name: Typecheck
         run: pnpm typecheck
