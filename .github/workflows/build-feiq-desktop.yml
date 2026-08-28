@@ -1,0 +1,126 @@
+name: Build Feiq Windows Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_label:
+        description: Label used for the downloadable Actions artifact
+        required: true
+        default: feiq-v0.4.34.2
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+          cache-dependency-path: server/go.sum
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test deployment-driven UI configuration
+        working-directory: packages/core
+        run: pnpm exec vitest run api/schema.test.ts platform/auth-initializer.test.tsx
+
+      - name: Test customized shared views
+        working-directory: packages/views
+        run: >-
+          pnpm exec vitest run
+          auth/login-page.test.tsx
+          layout/app-sidebar.test.tsx
+          settings/components/repositories-tab.test.tsx
+          settings/components/settings-page.test.tsx
+          settings/components/integrations-tab.test.tsx
+
+      - name: Test Desktop runtime configuration
+        working-directory: apps/desktop
+        run: >-
+          pnpm exec vitest run
+          src/shared/runtime-config.test.ts
+          src/main/runtime-config-loader.test.ts
+
+      - name: Typecheck Desktop and shared packages
+        run: pnpm typecheck
+
+      - name: Package unsigned Windows x64 installer
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: node scripts/package.mjs --win --x64 --publish never
+
+      - name: Create checksums and build information
+        shell: pwsh
+        env:
+          ARTIFACT_LABEL: ${{ inputs.artifact_label }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dist = Join-Path $PWD "apps/desktop/dist"
+          $installer = @(Get-ChildItem -LiteralPath $dist -File -Filter "*.exe")
+          if ($installer.Count -ne 1) {
+            throw "Expected one Windows installer, found $($installer.Count)."
+          }
+
+          $artifactFiles = @(Get-ChildItem -LiteralPath $dist -File | Where-Object {
+            $_.Extension -in @(".exe", ".blockmap", ".yml")
+          })
+          $checksumLines = foreach ($file in $artifactFiles) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $dist "SHA256SUMS-windows-x64.txt"),
+            $checksumLines,
+            $utf8NoBom
+          )
+
+          $buildInfo = @(
+            "Artifact label: $env:ARTIFACT_LABEL",
+            "Source commit: $(& git rev-parse HEAD)",
+            "Source version: $(& git describe --tags --match 'v[0-9]*' --always)",
+            "Platform: Windows x64",
+            "Signing: unsigned"
+          )
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $dist "BUILD-INFO-windows-x64.txt"),
+            $buildInfo,
+            $utf8NoBom
+          )
+
+      - name: Upload Windows Desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multica-desktop-windows-x64-${{ inputs.artifact_label }}
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/latest*.yml
+            apps/desktop/dist/SHA256SUMS-windows-x64.txt
+            apps/desktop/dist/BUILD-INFO-windows-x64.txt
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
