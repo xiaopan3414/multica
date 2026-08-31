@@ -35,7 +35,7 @@ export interface ValidateLocalDirectoryResult {
   is_git_repo?: boolean;
 }
 
-async function validateLocalDirectory(
+export async function validateLocalDirectory(
   path: string,
 ): Promise<ValidateLocalDirectoryResult> {
   if (!path || !isAbsolute(path)) {

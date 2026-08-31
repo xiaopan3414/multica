@@ -121,6 +121,12 @@ win:
   target:
     - nsis
   artifactName: multica-desktop-${version}-windows-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
 publish:
   provider: github
   owner: multica-ai

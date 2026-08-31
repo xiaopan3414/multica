@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -475,5 +476,13 @@ describe("electron-builder.yml packaging config", () => {
     const entries = readFilesBlock(readFileSync(configPath, "utf-8"));
     expect(entries.length).toBeGreaterThan(0);
     expect(entries).toContain("!dist/**");
+  });
+
+  it("uses an assisted Windows installer with a selectable install directory", () => {
+    expect(configPath, "electron-builder.yml not found").toBeTruthy();
+    const config = readFileSync(configPath, "utf-8").replaceAll("\r\n", "\n");
+    expect(config).toContain(
+      "nsis:\n  oneClick: false\n  allowToChangeInstallationDirectory: true",
+    );
   });
 });

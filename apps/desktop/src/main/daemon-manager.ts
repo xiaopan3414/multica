@@ -22,6 +22,10 @@ import type {
   LocalRuntimeProbe,
 } from "../shared/daemon-types";
 import { daemonStatusAlive } from "../shared/daemon-types";
+import {
+  daemonWorkspacesRootArgs,
+  normalizeDaemonPrefs,
+} from "../shared/daemon-preferences";
 import { ensureManagedCli, managedCliPath } from "./cli-bootstrap";
 import { decideVersionAction } from "./version-decision";
 import {
@@ -38,6 +42,7 @@ import {
   isDaemonExternallyManaged,
   normalizeHostOS,
 } from "./daemon-os";
+import { validateLocalDirectory } from "./local-directory";
 import {
   classifyAuthProbe,
   isAuthStatusError,
@@ -60,8 +65,6 @@ const AUTH_PROBE_GRACE_MS = 10_000;
 // healthy-but-slow start is misreported as a failure (the detached daemon child
 // keeps running, so the UI flashes "stopped" then "running").
 const DAEMON_START_EXEC_TIMEOUT_MS = 60_000;
-
-const DEFAULT_PREFS: DaemonPrefs = { autoStart: true, autoStop: false };
 
 // Always a resolved Desktop-owned profile. "Not resolved yet" is represented by
 // `null` at every call site, never by an empty name — see daemon-profile.ts.
@@ -709,10 +712,9 @@ async function syncToken(
 async function loadPrefs(): Promise<DaemonPrefs> {
   try {
     const raw = await readFile(PREFS_PATH, "utf-8");
-    const parsed = JSON.parse(raw);
-    return { ...DEFAULT_PREFS, ...parsed };
+    return normalizeDaemonPrefs(JSON.parse(raw));
   } catch {
-    return { ...DEFAULT_PREFS };
+    return normalizeDaemonPrefs(null);
   }
 }
 
@@ -720,6 +722,96 @@ async function savePrefs(prefs: DaemonPrefs): Promise<void> {
   const dir = join(homedir(), ".multica");
   await mkdir(dir, { recursive: true });
   await writeFile(PREFS_PATH, JSON.stringify(prefs, null, 2), "utf-8");
+}
+
+function applyWindowsLaunchAtLogin(enabled: boolean): void {
+  if (process.platform !== "win32" || !app.isPackaged) return;
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    path: process.execPath,
+  });
+}
+
+function workspaceRootError(
+  result: Awaited<ReturnType<typeof validateLocalDirectory>>,
+): string {
+  if (result.error) return result.error;
+  switch (result.reason) {
+    case "not_absolute":
+      return "The task working folder must be an absolute path.";
+    case "not_found":
+      return "The selected task working folder no longer exists.";
+    case "not_a_directory":
+      return "The selected task working folder is not a directory.";
+    case "not_readable":
+      return "The selected task working folder is not readable.";
+    case "not_writable":
+      return "The selected task working folder is not writable.";
+    default:
+      return "The selected task working folder could not be validated.";
+  }
+}
+
+async function updatePrefs(patch: Partial<DaemonPrefs>): Promise<DaemonPrefs> {
+  const current = await loadPrefs();
+  const merged = normalizeDaemonPrefs({ ...current, ...patch });
+  const rootChanged = merged.workspacesRoot !== current.workspacesRoot;
+  let restartAfterSave = false;
+
+  if (
+    rootChanged &&
+    (operationInProgress ||
+      currentState === "starting" ||
+      currentState === "stopping")
+  ) {
+    throw new Error(
+      "Wait for the current daemon operation to finish before changing the task working folder.",
+    );
+  }
+
+  if (rootChanged && merged.workspacesRoot) {
+    const validation = await validateLocalDirectory(merged.workspacesRoot);
+    if (!validation.ok) throw new Error(workspaceRootError(validation));
+  }
+
+  if (rootChanged) {
+    const active = await ensureActiveProfile();
+    const health = active ? await fetchHealthAtPort(active.port) : null;
+    if (daemonStatusAlive(health?.status)) {
+      if (
+        isDaemonExternallyManaged(
+          health?.os,
+          normalizeHostOS(process.platform),
+        )
+      ) {
+        throw new Error(
+          "The task working folder cannot be changed while the daemon is managed outside this app.",
+        );
+      }
+      if ((health?.active_task_count ?? 0) > 0) {
+        throw new Error(
+          "Wait for running tasks to finish before changing the task working folder.",
+        );
+      }
+      restartAfterSave = true;
+    }
+  }
+
+  if (merged.launchAtLogin !== current.launchAtLogin) {
+    applyWindowsLaunchAtLogin(merged.launchAtLogin);
+  }
+  await savePrefs(merged);
+
+  if (restartAfterSave) {
+    const result = await restartDaemon();
+    if (!result.success) {
+      throw new Error(
+        result.error ??
+          "The task working folder was saved, but the daemon could not restart.",
+      );
+    }
+  }
+  return merged;
 }
 
 async function clearToken(): Promise<void> {
@@ -915,7 +1007,13 @@ async function startDaemon(): Promise<{ success: boolean; error?: string }> {
   authExpired = false;
   sendStatus({ state: "starting" });
 
-  const args = ["daemon", "start", ...profileArgs(active.name)];
+  const prefs = await loadPrefs();
+  const args = [
+    "daemon",
+    "start",
+    ...profileArgs(active.name),
+    ...daemonWorkspacesRootArgs(prefs),
+  ];
 
   return new Promise((resolve) => {
     execFile(
@@ -1188,11 +1286,7 @@ export function setupDaemonManager(
   ipcMain.handle("daemon:get-prefs", () => loadPrefs());
   ipcMain.handle(
     "daemon:set-prefs",
-    (_event, prefs: Partial<DaemonPrefs>) =>
-      loadPrefs().then((cur) => {
-        const merged = { ...cur, ...prefs };
-        return savePrefs(merged).then(() => merged);
-      }),
+    (_event, prefs: Partial<DaemonPrefs>) => updatePrefs(prefs),
   );
   ipcMain.handle("daemon:auto-start", async () => {
     const prefs = await loadPrefs();
@@ -1236,6 +1330,11 @@ export function setupDaemonManager(
   // until the managed binary is on disk (instant on subsequent launches).
   currentState = "installing_cli";
   sendStatus({ state: "installing_cli" });
+  void loadPrefs()
+    .then((prefs) => applyWindowsLaunchAtLogin(prefs.launchAtLogin))
+    .catch((err) => {
+      console.warn("[daemon] failed to update Windows login startup:", err);
+    });
   void bootstrapCli();
 
   let isQuitting = false;
