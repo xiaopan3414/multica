@@ -48,6 +48,10 @@ import {
   isAuthStatusError,
   type AuthProbeResult,
 } from "./daemon-auth-probe";
+import {
+  isValidAgentId,
+  normalizeAgentWorkingDirectories,
+} from "../shared/agent-working-directories";
 
 const POLL_INTERVAL_MS = 5_000;
 const PREFS_PATH = join(homedir(), ".multica", "desktop_prefs.json");
@@ -814,6 +818,101 @@ async function updatePrefs(patch: Partial<DaemonPrefs>): Promise<DaemonPrefs> {
   return merged;
 }
 
+function requireAgentId(agentId: string): string {
+  const normalized = typeof agentId === "string" ? agentId.trim() : "";
+  if (!isValidAgentId(normalized)) {
+    throw new Error("The agent id is invalid.");
+  }
+  return normalized;
+}
+
+async function getAgentWorkingDirectory(agentId: string): Promise<string> {
+  const normalizedAgentId = requireAgentId(agentId);
+  const active = await ensureActiveProfile();
+  if (!active) {
+    throw new Error("The local daemon profile is not ready yet.");
+  }
+  const config = await readProfileConfig(active.name);
+  const directories = normalizeAgentWorkingDirectories(
+    config.agent_working_directories,
+  );
+  return directories[normalizedAgentId] ?? "";
+}
+
+async function setAgentWorkingDirectory(
+  agentId: string,
+  requestedPath: string,
+): Promise<{ path: string }> {
+  if (operationInProgress) {
+    throw new Error(
+      "Wait for the current daemon operation to finish before changing this folder.",
+    );
+  }
+  operationInProgress = true;
+  try {
+    const normalizedAgentId = requireAgentId(agentId);
+    const path = typeof requestedPath === "string" ? requestedPath.trim() : "";
+    if (path) {
+      const validation = await validateLocalDirectory(path);
+      if (!validation.ok) throw new Error(workspaceRootError(validation));
+    }
+
+    const active = await ensureActiveProfile();
+    if (!active) {
+      throw new Error("The local daemon profile is not ready yet.");
+    }
+    const config = await readProfileConfig(active.name);
+    const directories = normalizeAgentWorkingDirectories(
+      config.agent_working_directories,
+    );
+    if ((directories[normalizedAgentId] ?? "") === path) return { path };
+
+    const health = await fetchHealthAtPort(active.port);
+    let restartAfterSave = false;
+    if (daemonStatusAlive(health?.status)) {
+      if (
+        isDaemonExternallyManaged(
+          health?.os,
+          normalizeHostOS(process.platform),
+        )
+      ) {
+        throw new Error(
+          "This folder cannot be changed while the daemon is managed outside this app.",
+        );
+      }
+      if ((health?.active_task_count ?? 0) > 0) {
+        throw new Error(
+          "Wait for running tasks to finish before changing this folder.",
+        );
+      }
+      restartAfterSave = true;
+    }
+
+    if (path) directories[normalizedAgentId] = path;
+    else delete directories[normalizedAgentId];
+
+    if (Object.keys(directories).length > 0) {
+      config.agent_working_directories = directories;
+    } else {
+      delete config.agent_working_directories;
+    }
+    await writeProfileConfig(active.name, config);
+
+    if (restartAfterSave) {
+      const result = await restartDaemon();
+      if (!result.success) {
+        throw new Error(
+          result.error ??
+            "The folder was saved, but the daemon could not restart.",
+        );
+      }
+    }
+    return { path };
+  } finally {
+    operationInProgress = false;
+  }
+}
+
 async function clearToken(): Promise<void> {
   const active = await ensureActiveProfile();
   // Nothing of ours to clear yet, and the default CLI profile is not ours to
@@ -1287,6 +1386,15 @@ export function setupDaemonManager(
   ipcMain.handle(
     "daemon:set-prefs",
     (_event, prefs: Partial<DaemonPrefs>) => updatePrefs(prefs),
+  );
+  ipcMain.handle(
+    "daemon:get-agent-working-directory",
+    (_event, agentId: string) => getAgentWorkingDirectory(agentId),
+  );
+  ipcMain.handle(
+    "daemon:set-agent-working-directory",
+    (_event, agentId: string, path: string) =>
+      setAgentWorkingDirectory(agentId, path),
   );
   ipcMain.handle("daemon:auto-start", async () => {
     const prefs = await loadPrefs();

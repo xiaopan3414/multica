@@ -4,6 +4,7 @@ import { AgentDetailPage as SharedAgentDetailPage } from "@multica/views/agents"
 import { useWorkspaceId } from "@multica/core/hooks";
 import { agentListOptions } from "@multica/core/workspace/queries";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { PrivateAgentWorkingDirectory } from "@/components/private-agent-working-directory";
 
 export function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,5 +15,10 @@ export function AgentDetailPage() {
   useDocumentTitle(agent?.name ?? "Agent");
 
   if (!id) return null;
-  return <SharedAgentDetailPage agentId={id} />;
+  return (
+    <SharedAgentDetailPage
+      agentId={id}
+      settingsExtension={<PrivateAgentWorkingDirectory agentId={id} />}
+    />
+  );
 }

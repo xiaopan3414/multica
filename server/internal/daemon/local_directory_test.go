@@ -215,6 +215,113 @@ func TestAcquireLocalDirectoryLockSkipsSquadLeaderTasks(t *testing.T) {
 	}
 }
 
+func TestPrivateAgentWorkingDirectoryOverridesProjectResource(t *testing.T) {
+	const (
+		daemonID = "d-mine"
+		agentID  = "7f34eb65-30d5-44c9-9a76-723108504a72"
+	)
+	privatePath := t.TempDir()
+	projectPath := t.TempDir()
+	raw, err := json.Marshal(localDirectoryRef{LocalPath: projectPath, DaemonID: daemonID})
+	if err != nil {
+		t.Fatalf("marshal resource: %v", err)
+	}
+	d := &Daemon{cfg: Config{
+		DaemonID: daemonID,
+		AgentWorkingDirectories: map[string]string{
+			agentID: privatePath,
+		},
+	}}
+	task := Task{
+		ID:      "task-1",
+		AgentID: agentID,
+		ProjectResources: []ProjectResourceData{
+			{ID: "resource-1", ResourceType: localDirectoryResourceType, ResourceRef: raw},
+		},
+	}
+
+	assignment, err := d.localDirectoryAssignmentForTask(task)
+	if err != nil {
+		t.Fatalf("resolve assignment: %v", err)
+	}
+	if assignment == nil || assignment.AbsPath != filepath.Clean(privatePath) {
+		t.Fatalf("assignment = %+v, want private path %q", assignment, privatePath)
+	}
+	if assignment.UsesWorktree() {
+		t.Fatal("private agent folder must always run in place")
+	}
+	if !assignment.PrivateAgent {
+		t.Fatal("private agent folder assignment must preserve its local-only source")
+	}
+	if localDirectoryAssignmentLockExempt(Task{ChatSessionID: "chat-1"}, assignment) {
+		t.Fatal("private agent folder chat tasks must serialize with other tasks on the path")
+	}
+	if d.shouldRegisterTaskRepos(task) {
+		t.Fatal("private agent folder task must not start task repository sync")
+	}
+}
+
+func TestPrivateAgentWorkingDirectoryFallbackAndLeaderBehavior(t *testing.T) {
+	const (
+		daemonID = "d-mine"
+		agentID  = "7f34eb65-30d5-44c9-9a76-723108504a72"
+	)
+	privatePath := t.TempDir()
+	projectPath := t.TempDir()
+	raw, err := json.Marshal(localDirectoryRef{LocalPath: projectPath, DaemonID: daemonID})
+	if err != nil {
+		t.Fatalf("marshal resource: %v", err)
+	}
+	d := &Daemon{cfg: Config{
+		DaemonID: daemonID,
+		AgentWorkingDirectories: map[string]string{
+			agentID: privatePath,
+		},
+	}}
+	resources := []ProjectResourceData{
+		{ID: "resource-1", ResourceType: localDirectoryResourceType, ResourceRef: raw},
+	}
+
+	unmapped, err := d.localDirectoryAssignmentForTask(Task{AgentID: "another-agent", ProjectResources: resources})
+	if err != nil {
+		t.Fatalf("resolve unmapped assignment: %v", err)
+	}
+	if unmapped == nil || unmapped.AbsPath != filepath.Clean(projectPath) {
+		t.Fatalf("unmapped assignment = %+v, want project resource %q", unmapped, projectPath)
+	}
+
+	leader := Task{AgentID: agentID, IsLeaderTask: true, ProjectResources: resources}
+	leaderAssignment, err := d.localDirectoryAssignmentForTask(leader)
+	if err != nil {
+		t.Fatalf("resolve leader assignment: %v", err)
+	}
+	if leaderAssignment != nil {
+		t.Fatalf("leader assignment = %+v, want nil", leaderAssignment)
+	}
+	if !d.shouldRegisterTaskRepos(leader) {
+		t.Fatal("leader task must retain the normal repository path")
+	}
+}
+
+func TestPrivateAgentWorkingDirectoriesShareRealPathLock(t *testing.T) {
+	path := t.TempDir()
+	d := &Daemon{cfg: Config{AgentWorkingDirectories: map[string]string{
+		"7f34eb65-30d5-44c9-9a76-723108504a72": path,
+		"07a9eb59-8b47-4686-b683-152304344409": path,
+	}}}
+	first, err := d.localDirectoryAssignmentForTask(Task{AgentID: "7f34eb65-30d5-44c9-9a76-723108504a72"})
+	if err != nil {
+		t.Fatalf("first assignment: %v", err)
+	}
+	second, err := d.localDirectoryAssignmentForTask(Task{AgentID: "07a9eb59-8b47-4686-b683-152304344409"})
+	if err != nil {
+		t.Fatalf("second assignment: %v", err)
+	}
+	if first == nil || second == nil || first.RealPath != second.RealPath {
+		t.Fatalf("assignments must share one lock key: first=%+v second=%+v", first, second)
+	}
+}
+
 func TestValidateLocalPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("blacklist constants are POSIX-only in this test")

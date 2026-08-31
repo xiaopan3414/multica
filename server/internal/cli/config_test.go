@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -249,6 +250,30 @@ func TestCLIConfig_ProfileCommandOverrides_OmittedWhenEmpty(t *testing.T) {
 	}
 	if _, ok := raw["profile_command_overrides"]; ok {
 		t.Errorf("profile_command_overrides should be omitted when empty, got: %s", string(data))
+	}
+}
+
+func TestCLIConfig_AgentWorkingDirectories_RoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	original := CLIConfig{
+		ServerURL: "https://multica.internal",
+		Token:     "mul_xyz",
+		AgentWorkingDirectories: map[string]string{
+			"7f34eb65-30d5-44c9-9a76-723108504a72": filepath.Join(tmp, "existing-project"),
+		},
+	}
+	if err := SaveCLIConfig(original); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadCLIConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded.AgentWorkingDirectories, original.AgentWorkingDirectories) {
+		t.Fatalf("AgentWorkingDirectories = %#v, want %#v", loaded.AgentWorkingDirectories, original.AgentWorkingDirectories)
 	}
 }
 

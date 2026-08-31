@@ -199,7 +199,25 @@
     "edit_description_title": "Edit description",
     "description_placeholder": "What does this agent do?",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "private_working_directory": {
+      "title": "Private working directory on this computer",
+      "section_hint": "This mapping stays in the local Desktop profile and is not added as a shared project resource.",
+      "folder_label": "Run this agent in",
+      "folder_hint": "Tasks claimed by this computer edit the existing folder directly. Tasks sharing the same folder run one at a time.",
+      "default_path": "Use the normal task workspace",
+      "loading": "Loading...",
+      "choose": "Choose folder",
+      "choosing": "Choosing...",
+      "saving": "Saving...",
+      "use_default": "Use default",
+      "saved": "Private working directory updated",
+      "reset": "Default task workspace restored",
+      "load_failed": "Could not load the private working directory",
+      "save_failed": "Could not save the private working directory",
+      "picker_failed": "Could not open the folder picker",
+      "invalid_folder": "The selected folder must exist and be readable and writable."
+    }
   },
   "overview": {
     "agent_context": "Agent",

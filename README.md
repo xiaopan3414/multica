@@ -144,6 +144,18 @@ Full walkthrough: [Quickstart](https://multica.ai/docs/cloud-quickstart) · [Tut
 
 ---
 
+## Private per-agent working directories in Desktop
+
+This customized build lets one Windows Desktop bind an agent to an existing local directory.
+Open **Agents → Settings → General → Private working directory on this computer** and choose the
+folder. The mapping stays in that computer's Desktop CLI profile and is not created as a shared
+project resource. Tasks claimed for the mapped agent edit the folder directly, skip the task's
+repository-cache clone, and serialize with other coding tasks using the same real path. Squad
+leader tasks retain the normal isolated workspace behavior. Changing the mapping waits for active
+tasks to finish and restarts an idle daemon so the new setting takes effect.
+
+---
+
 ## Runtimes
 
 Multica does not ship a model. It drives the agent CLIs you already have installed and

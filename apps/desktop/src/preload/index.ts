@@ -270,6 +270,13 @@ const daemonAPI = {
   getPrefs: (): Promise<DaemonPrefs> => ipcRenderer.invoke("daemon:get-prefs"),
   setPrefs: (prefs: Partial<DaemonPrefs>): Promise<DaemonPrefs> =>
     ipcRenderer.invoke("daemon:set-prefs", prefs),
+  getAgentWorkingDirectory: (agentId: string): Promise<string> =>
+    ipcRenderer.invoke("daemon:get-agent-working-directory", agentId),
+  setAgentWorkingDirectory: (
+    agentId: string,
+    path: string,
+  ): Promise<{ path: string }> =>
+    ipcRenderer.invoke("daemon:set-agent-working-directory", agentId, path),
   autoStart: (): Promise<void> =>
     ipcRenderer.invoke("daemon:auto-start"),
   retryInstall: (): Promise<void> =>

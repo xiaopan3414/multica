@@ -183,7 +183,25 @@
     "edit_description_title": "説明を編集",
     "description_placeholder": "このエージェントは何をしますか？",
     "save": "保存",
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "private_working_directory": {
+      "title": "このコンピューター上の非公開作業フォルダー",
+      "section_hint": "この関連付けはローカルの Desktop 設定にのみ保存され、共有プロジェクトリソースには追加されません。",
+      "folder_label": "このエージェントの実行先",
+      "folder_hint": "このコンピューターが取得した task は既存フォルダーを直接編集します。同じフォルダーを使う task は順番に実行されます。",
+      "default_path": "通常の task ワークスペースを使用",
+      "loading": "読み込み中...",
+      "choose": "フォルダーを選択",
+      "choosing": "選択中...",
+      "saving": "保存中...",
+      "use_default": "既定に戻す",
+      "saved": "非公開作業フォルダーを更新しました",
+      "reset": "通常の task ワークスペースに戻しました",
+      "load_failed": "非公開作業フォルダーを読み込めませんでした",
+      "save_failed": "非公開作業フォルダーを保存できませんでした",
+      "picker_failed": "フォルダー選択を開けませんでした",
+      "invalid_folder": "選択したフォルダーが存在し、読み書きできる必要があります。"
+    }
   },
   "overview": {
     "agent_context": "エージェント",

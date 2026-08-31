@@ -45,9 +45,10 @@ type localDirectoryRef struct {
 // absolute path; the path mutex keys on it so two different routes to the
 // same directory are serialised.
 type localDirectoryAssignment struct {
-	Ref      localDirectoryRef
-	AbsPath  string // user-provided path, cleaned but not symlink-resolved
-	RealPath string // canonical key for the path mutex
+	Ref          localDirectoryRef
+	AbsPath      string // user-provided path, cleaned but not symlink-resolved
+	RealPath     string // canonical key for the path mutex
+	PrivateAgent bool   // sourced from this machine's per-agent Desktop mapping
 }
 
 // UsesWorktree reports whether this assignment runs each task in its own git
@@ -125,6 +126,43 @@ func localDirectoryAssignmentForTask(task Task, daemonID string) (*localDirector
 	return findLocalDirectoryAssignment(task.ProjectResources, daemonID)
 }
 
+// localDirectoryAssignmentForTask resolves the directory this daemon should
+// use for a task. A Desktop-local per-agent mapping wins over project resources:
+// the operator selected it specifically for this machine and it must not depend
+// on a server-visible local_directory resource. The assignment is always
+// in-place; direct execution is the purpose of the private mapping.
+func (d *Daemon) localDirectoryAssignmentForTask(task Task) (*localDirectoryAssignment, error) {
+	if task.IsLeaderTask {
+		return nil, nil
+	}
+	if localPath, ok := d.privateAgentWorkingDirectory(task); ok {
+		assignment, err := newLocalDirectoryAssignment(localDirectoryRef{
+			LocalPath:     localPath,
+			DaemonID:      d.cfg.DaemonID,
+			Label:         "private agent folder",
+			ExecutionMode: localDirectoryModeInPlace,
+		})
+		if assignment != nil {
+			assignment.PrivateAgent = true
+		}
+		return assignment, err
+	}
+	return findLocalDirectoryAssignment(task.ProjectResources, d.cfg.DaemonID)
+}
+
+func (d *Daemon) privateAgentWorkingDirectory(task Task) (string, bool) {
+	if task.IsLeaderTask || strings.TrimSpace(task.AgentID) == "" {
+		return "", false
+	}
+	path := strings.TrimSpace(d.cfg.AgentWorkingDirectories[task.AgentID])
+	return path, path != ""
+}
+
+func (d *Daemon) shouldRegisterTaskRepos(task Task) bool {
+	_, usesPrivateAgentDirectory := d.privateAgentWorkingDirectory(task)
+	return !usesPrivateAgentDirectory
+}
+
 // localDirectoryLockExempt reports whether a task may run inside an in_place
 // local_directory WITHOUT serialising on the per-path mutex. It is asked only
 // after an assignment has been resolved and validated, so an exempt task still
@@ -150,6 +188,10 @@ func localDirectoryAssignmentForTask(task Task, daemonID string) (*localDirector
 // turn ever dispatched.
 func localDirectoryLockExempt(task Task) bool {
 	return task.ChatSessionID != ""
+}
+
+func localDirectoryAssignmentLockExempt(task Task, assignment *localDirectoryAssignment) bool {
+	return assignment != nil && !assignment.PrivateAgent && localDirectoryLockExempt(task)
 }
 
 // findLocalDirectoryAssignment scans the task's project resources for one of
@@ -196,21 +238,29 @@ func findLocalDirectoryAssignment(resources []ProjectResourceData, daemonID stri
 				strings.TrimSpace(ref.LocalPath),
 			)
 		}
-		absPath, err := normalizeLocalPath(ref.LocalPath)
+		assignment, err := newLocalDirectoryAssignment(ref)
 		if err != nil {
 			return nil, err
 		}
-		realPath, err := resolveRealPath(absPath)
-		if err != nil {
-			return nil, err
-		}
-		match = &localDirectoryAssignment{
-			Ref:      ref,
-			AbsPath:  absPath,
-			RealPath: realPath,
-		}
+		match = assignment
 	}
 	return match, nil
+}
+
+func newLocalDirectoryAssignment(ref localDirectoryRef) (*localDirectoryAssignment, error) {
+	absPath, err := normalizeLocalPath(ref.LocalPath)
+	if err != nil {
+		return nil, err
+	}
+	realPath, err := resolveRealPath(absPath)
+	if err != nil {
+		return nil, err
+	}
+	return &localDirectoryAssignment{
+		Ref:      ref,
+		AbsPath:  absPath,
+		RealPath: realPath,
+	}, nil
 }
 
 // normalizeLocalPath strips whitespace and resolves the path to an absolute

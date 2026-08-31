@@ -148,6 +148,38 @@ func TestLoadConfig_CompletedTaskTTLDefaultsDisabledOnSelfHostAndReadsEnv(t *tes
 	}
 }
 
+func TestLoadConfig_AgentWorkingDirectoriesFromLocalProfile(t *testing.T) {
+	stageFakeAgent(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", filepath.Join(t.TempDir(), "missing-shell"))
+	workdir := filepath.Join(t.TempDir(), "existing-project")
+	const agentID = "7f34eb65-30d5-44c9-9a76-723108504a72"
+	if err := cli.SaveCLIConfig(cli.CLIConfig{
+		AgentWorkingDirectories: map[string]string{
+			agentID:                                workdir,
+			"":                                     filepath.Join(home, "ignored-empty-id"),
+			"07a9eb59-8b47-4686-b683-152304344409": "   ",
+		},
+	}); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+
+	cfg, err := LoadConfig(Overrides{
+		ServerURL:      "http://localhost:0",
+		WorkspacesRoot: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := cfg.AgentWorkingDirectories[agentID]; got != workdir {
+		t.Fatalf("AgentWorkingDirectories[%q] = %q, want %q", agentID, got, workdir)
+	}
+	if len(cfg.AgentWorkingDirectories) != 1 {
+		t.Fatalf("AgentWorkingDirectories = %#v, want one valid mapping", cfg.AgentWorkingDirectories)
+	}
+}
+
 func TestLoadConfig_CompletedTaskTTLDefaultsBoundedOnOfficialCloud(t *testing.T) {
 	stageFakeAgent(t)
 	t.Setenv("HOME", t.TempDir())

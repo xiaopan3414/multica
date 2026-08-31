@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent, AgentRuntime } from "@multica/core/types";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -133,7 +134,10 @@ function makeRuntime(provider: string): AgentRuntime {
 
 function renderPane(
   runtimes: AgentRuntime[],
-  { canEdit = true }: { canEdit?: boolean } = {},
+  {
+    canEdit = true,
+    settingsExtension,
+  }: { canEdit?: boolean; settingsExtension?: ReactNode } = {},
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -158,6 +162,7 @@ function renderPane(
             members={[]}
             onUpdate={vi.fn().mockResolvedValue(undefined)}
             canEdit={canEdit}
+            settingsExtension={settingsExtension}
           />
         </QueryClientProvider>
       </NavigationProvider>
@@ -261,6 +266,25 @@ describe("AgentOverviewPane Settings navigation", () => {
     renderPane([makeRuntime("claude")]);
     openSettings();
     expect(screen.getByRole("tab", { name: /^Access$/i })).toBeInTheDocument();
+  });
+
+  it("renders a host-specific extension only for an agent manager", () => {
+    renderPane([makeRuntime("claude")], {
+      settingsExtension: <div>desktop-private-folder</div>,
+    });
+    openSettings();
+    fireEvent.click(screen.getByRole("tab", { name: /^General$/i }));
+    expect(screen.getByText("desktop-private-folder")).toBeInTheDocument();
+  });
+
+  it("does not expose a host-specific extension to a read-only viewer", () => {
+    renderPane([makeRuntime("claude")], {
+      canEdit: false,
+      settingsExtension: <div>desktop-private-folder</div>,
+    });
+    openSettings();
+    fireEvent.click(screen.getByRole("tab", { name: /^General$/i }));
+    expect(screen.queryByText("desktop-private-folder")).not.toBeInTheDocument();
   });
 });
 

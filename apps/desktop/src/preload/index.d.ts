@@ -139,6 +139,11 @@ interface DaemonAPI {
   isCliInstalled: () => Promise<boolean>;
   getPrefs: () => Promise<DaemonPrefs>;
   setPrefs: (prefs: Partial<DaemonPrefs>) => Promise<DaemonPrefs>;
+  getAgentWorkingDirectory: (agentId: string) => Promise<string>;
+  setAgentWorkingDirectory: (
+    agentId: string,
+    path: string,
+  ) => Promise<{ path: string }>;
   autoStart: () => Promise<void>;
   retryInstall: () => Promise<void>;
   startLogStream: () => void;

@@ -5217,7 +5217,7 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 			// exempt env root, so the directory would accumulate one env
 			// root per task forever — the exact cost the exemption was
 			// meant to trade away for a user's own files.
-			if assignment, _ := localDirectoryAssignmentForTask(task, d.cfg.DaemonID); assignment != nil && !assignment.UsesWorktree() {
+			if assignment, _ := d.localDirectoryAssignmentForTask(task); assignment != nil && !assignment.UsesWorktree() {
 				meta.LocalDirectory = true
 			}
 			if err := execenv.WriteGCMeta(result.EnvRoot, meta, taskLog); err != nil {
@@ -5282,10 +5282,7 @@ func taskRunFailureReason(err error) string {
 //  4. The blocking wait is cancelled (daemon shutdown, server-side cancel)
 //     — fail the task with the ctx error.
 func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Task, taskLog *slog.Logger) (release func(), abort bool) {
-	if len(task.ProjectResources) == 0 || d.cfg.DaemonID == "" {
-		return nil, false
-	}
-	assignment, err := localDirectoryAssignmentForTask(task, d.cfg.DaemonID)
+	assignment, err := d.localDirectoryAssignmentForTask(task)
 	if err != nil {
 		taskLog.Error("local_directory: resolve resource failed", "error", err)
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
@@ -5348,7 +5345,7 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 	// behind a 20-minute build with nothing to contribute to it (issue #7344).
 	// See localDirectoryLockExempt for why the mutex does not owe this task a
 	// slot.
-	if localDirectoryLockExempt(task) {
+	if localDirectoryAssignmentLockExempt(task, assignment) {
 		taskLog.Info("local_directory: chat task, skipping path mutex")
 		return nil, false
 	}
@@ -6598,14 +6595,23 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		returnErr = fmt.Errorf("%w after %s", errTaskPrepareTimeout, prepareTimeout)
 	}()
 
+	localAssignment, err := d.localDirectoryAssignmentForTask(task)
+	if err != nil {
+		return TaskResult{}, err
+	}
 	// task.Repos is the authoritative repo list for this task — when the
 	// claimed task belongs to a project with github_repo resources the server
 	// has already narrowed it to project repos only. Make sure those URLs are
 	// in the per-workspace allowlist and the local cache, otherwise
 	// `multica repo checkout` would reject project-only URLs that aren't also
 	// bound at the workspace level.
-	d.registerTaskRepos(task.WorkspaceID, task.ID, task.Repos)
-	defer d.clearTaskRepoRefs(task.WorkspaceID, task.ID)
+	// A private per-agent directory is already the authoritative checkout on
+	// this machine. Do not start a background clone merely because the project
+	// also carries repository metadata; the agent must work in place.
+	if d.shouldRegisterTaskRepos(task) {
+		d.registerTaskRepos(task.WorkspaceID, task.ID, task.Repos)
+		defer d.clearTaskRepoRefs(task.WorkspaceID, task.ID)
+	}
 
 	entry, ok := d.agents()[provider]
 	// A custom runtime profile (MUL-3284) overrides the executable path: the
@@ -6764,10 +6770,9 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if provider == "openclaw" {
 		openclawBin = entry.Path
 	}
-	// Resolve any local_directory assignment again here so runTask can plumb
-	// LocalWorkDir into execenv. handleTask already validated + locked the
-	// path for worker tasks; leader tasks intentionally skip the assignment.
-	localAssignment, _ := localDirectoryAssignmentForTask(task, d.cfg.DaemonID)
+	// The local_directory assignment resolved above is plumbed into execenv.
+	// handleTask already validated + locked it for worker tasks; leader tasks
+	// intentionally skip the assignment.
 	// Reuse intentionally skipped for local_directory tasks: the prior
 	// WorkDir is the user's own path (always present) but the reuse path
 	// loses the envRoot association the GC loop needs, and re-running
@@ -7311,7 +7316,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// is the one thing it cannot work out from its own context — tell it.
 	// Worktree mode is excluded: there the tree is this task's private checkout.
 	var promptOptions []PromptOption
-	if localAssignment != nil && !localAssignment.UsesWorktree() && localDirectoryLockExempt(task) {
+	if localAssignment != nil && !localAssignment.UsesWorktree() && localDirectoryAssignmentLockExempt(task, localAssignment) {
 		promptOptions = append(promptOptions, WithSharedLocalDirectory())
 	}
 	prompt := BuildPrompt(task, provider, promptOptions...)

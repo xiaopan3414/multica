@@ -154,6 +154,12 @@ type Config struct {
 	// prefers a matching, executable override over resolving the profile's
 	// command_name on PATH. nil/empty means "always resolve via PATH".
 	ProfileCommandOverrides map[string]string
+
+	// AgentWorkingDirectories maps agent ids to existing directories on this
+	// machine. It comes only from the local CLI profile and is never registered
+	// with the server. A mapped worker runs in place and takes the existing
+	// per-real-path lock; squad leaders intentionally ignore the mapping.
+	AgentWorkingDirectories map[string]string
 }
 
 // Overrides allows CLI flags to override environment variables and defaults.
@@ -228,6 +234,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	// purely from env-var configuration. We log a warning and proceed with
 	// no overrides.
 	var profileCommandOverrides map[string]string
+	var agentWorkingDirectories map[string]string
 	if cliCfg, err := cli.LoadCLIConfigForProfile(overrides.Profile); err != nil {
 		slog.Warn("could not load CLI config for backend overrides; proceeding without",
 			"profile", overrides.Profile, "err", err)
@@ -245,6 +252,17 @@ func LoadConfig(overrides Overrides) (Config, error) {
 					continue
 				}
 				profileCommandOverrides[id] = path
+			}
+		}
+		if len(cliCfg.AgentWorkingDirectories) > 0 {
+			agentWorkingDirectories = make(map[string]string, len(cliCfg.AgentWorkingDirectories))
+			for id, path := range cliCfg.AgentWorkingDirectories {
+				id = strings.TrimSpace(id)
+				path = strings.TrimSpace(path)
+				if id == "" || path == "" {
+					continue
+				}
+				agentWorkingDirectories[id] = path
 			}
 		}
 	}
@@ -575,6 +593,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		QwenArgs:                        qwenArgs,
 		QwenpawArgs:                     qwenpawArgs,
 		ProfileCommandOverrides:         profileCommandOverrides,
+		AgentWorkingDirectories:         agentWorkingDirectories,
 	}, nil
 }
 

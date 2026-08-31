@@ -156,6 +156,12 @@ type CLIConfig struct {
 	// intentionally local-only (it is never sent to the server) because the
 	// path is a property of this machine, not of the shared profile.
 	ProfileCommandOverrides map[string]string `json:"profile_command_overrides,omitempty"`
+
+	// AgentWorkingDirectories maps an agent id to an existing directory on
+	// this machine. Desktop writes this local-only map so tasks claimed for a
+	// mapped agent can run directly in the user's checkout without creating a
+	// shared project resource or a task-specific clone.
+	AgentWorkingDirectories map[string]string `json:"agent_working_directories,omitempty"`
 }
 
 // BackendOverrides holds per-backend configuration overrides. Each field is

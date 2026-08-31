@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   Agent,
@@ -130,6 +137,7 @@ interface AgentOverviewPaneProps {
   canEdit: boolean;
   navIntent?: DetailTab | null;
   onNavIntentHandled?: () => void;
+  settingsExtension?: ReactNode;
 }
 
 /**
@@ -150,6 +158,7 @@ export function AgentOverviewPane({
   canEdit,
   navIntent,
   onNavIntentHandled,
+  settingsExtension,
 }: AgentOverviewPaneProps) {
   const { t } = useT("agents");
   const wsId = useWorkspaceId();
@@ -455,15 +464,18 @@ export function AgentOverviewPane({
                     <IntegrationsTab agent={agent} />
                   )}
                   {effectiveView === "general" && (
-                    <AgentDetailInspector
-                      agent={agent}
-                      runtime={runtime}
-                      runtimes={runtimes}
-                      members={members}
-                      currentUserId={currentUserId ?? null}
-                      canEdit={canEdit}
-                      onUpdate={onUpdate}
-                    />
+                    <>
+                      <AgentDetailInspector
+                        agent={agent}
+                        runtime={runtime}
+                        runtimes={runtimes}
+                        members={members}
+                        currentUserId={currentUserId ?? null}
+                        canEdit={canEdit}
+                        onUpdate={onUpdate}
+                      />
+                      {canEdit ? settingsExtension : null}
+                    </>
                   )}
                   {effectiveView === "access" && (
                     <AgentAccessSettings

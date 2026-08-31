@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -67,9 +67,13 @@ import { useT, useTimeAgo } from "../../i18n";
 
 interface AgentDetailPageProps {
   agentId: string;
+  settingsExtension?: ReactNode;
 }
 
-export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
+export function AgentDetailPage({
+  agentId,
+  settingsExtension,
+}: AgentDetailPageProps) {
   const { t } = useT("agents");
   const wsId = useWorkspaceId();
   const paths = useWorkspacePaths();
@@ -416,6 +420,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
           canEdit={canEdit.allowed}
           navIntent={tabNavIntent}
           onNavIntentHandled={() => setTabNavIntent(null)}
+          settingsExtension={settingsExtension}
         />
       </div>
 
