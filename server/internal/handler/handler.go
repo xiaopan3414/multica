@@ -68,6 +68,15 @@ type Config struct {
 	AllowSignup         bool
 	AllowedEmails       []string
 	AllowedEmailDomains []string
+	// LoginEmailDomain, when non-empty, restricts verification-code login to
+	// exactly this domain for both existing and new users. It is deliberately
+	// separate from AllowedEmailDomains, whose historical contract only gates
+	// new registrations.
+	LoginEmailDomain string
+	// VerificationCodeResendInterval is nil for the historical 60-second
+	// default. A pointer to zero explicitly disables the per-email resend
+	// cooldown while leaving verification attempt protection intact.
+	VerificationCodeResendInterval *time.Duration
 	// DisableWorkspaceCreation, when true, makes POST /api/workspaces return
 	// 403 for every caller. There is no role/owner exception because the repo
 	// has no platform-admin concept; operators bootstrap the workspace with

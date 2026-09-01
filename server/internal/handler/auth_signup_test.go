@@ -43,6 +43,20 @@ func TestSignupGating(t *testing.T) {
 	}
 }
 
+func TestValidateLoginEmailDomain(t *testing.T) {
+	h := newTestHandler(Config{LoginEmailDomain: " @MyHexin.com "})
+	for _, email := range []string{"user@myhexin.com", "USER@MYHEXIN.COM"} {
+		if err := h.validateLoginEmailDomain(email); err != nil {
+			t.Fatalf("validateLoginEmailDomain(%q): %v", email, err)
+		}
+	}
+	for _, email := range []string{"user@example.com", "user", "@myhexin.com", "user@myhexin.com@other"} {
+		if err := h.validateLoginEmailDomain(email); err == nil {
+			t.Fatalf("validateLoginEmailDomain(%q): expected rejection", email)
+		}
+	}
+}
+
 type mockDB struct {
 	db.DBTX
 	getUserErr error

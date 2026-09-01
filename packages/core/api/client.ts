@@ -28,6 +28,7 @@ import type {
   StoredAgentDraft,
   UpdateAgentRequest,
   AgentEnvResponse,
+  AgentWorkingDirectory,
   UpdateAgentEnvRequest,
   AgentTask,
   AgentActivityBucket,
@@ -257,6 +258,8 @@ import {
   AgentBuilderRuntimeSwitchSchema,
   AgentBuilderSessionSchema,
   AgentBuilderSessionListSchema,
+  AgentWorkingDirectorySchema,
+  EMPTY_AGENT_WORKING_DIRECTORY,
   EMPTY_AGENT_BUILDER_SESSION_LIST,
   agentBuilderRuntimeSwitchFallback,
   DashboardAgentRunTimeListSchema,
@@ -1404,6 +1407,44 @@ export class ApiClient {
 
   async getAgent(id: string): Promise<Agent> {
     return this.fetch(`/api/agents/${id}`);
+  }
+
+  async getAgentWorkingDirectory(id: string): Promise<AgentWorkingDirectory> {
+    const raw = await this.fetch<unknown>(`/api/agents/${id}/working-directory`);
+    return parseWithFallback(
+      raw,
+      AgentWorkingDirectorySchema,
+      { ...EMPTY_AGENT_WORKING_DIRECTORY, agent_id: id },
+      { endpoint: "GET /api/agents/{id}/working-directory" },
+    );
+  }
+
+  async updateAgentWorkingDirectory(
+    id: string,
+    localPath: string,
+  ): Promise<AgentWorkingDirectory> {
+    const raw = await this.fetch<unknown>(`/api/agents/${id}/working-directory`, {
+      method: "PUT",
+      body: JSON.stringify({ local_path: localPath }),
+    });
+    return parseWithFallback(
+      raw,
+      AgentWorkingDirectorySchema,
+      { ...EMPTY_AGENT_WORKING_DIRECTORY, agent_id: id },
+      { endpoint: "PUT /api/agents/{id}/working-directory" },
+    );
+  }
+
+  async deleteAgentWorkingDirectory(id: string): Promise<AgentWorkingDirectory> {
+    const raw = await this.fetch<unknown>(`/api/agents/${id}/working-directory`, {
+      method: "DELETE",
+    });
+    return parseWithFallback(
+      raw,
+      AgentWorkingDirectorySchema,
+      { ...EMPTY_AGENT_WORKING_DIRECTORY, agent_id: id },
+      { endpoint: "DELETE /api/agents/{id}/working-directory" },
+    );
   }
 
   async createAgent(data: CreateAgentRequest): Promise<Agent> {

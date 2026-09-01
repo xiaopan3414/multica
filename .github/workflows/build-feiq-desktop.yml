@@ -6,7 +6,7 @@ on:
       artifact_label:
         description: Label used for the downloadable Actions artifact
         required: true
-        default: feiq-v0.4.34.6
+        default: feiq-v0.4.34.7
 
 permissions:
   contents: read
@@ -44,13 +44,14 @@ jobs:
 
       - name: Test deployment-driven UI configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts platform/auth-initializer.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts platform/auth-initializer.test.tsx
 
       - name: Test customized shared views
         working-directory: packages/views
         run: >-
           pnpm exec vitest run
           auth/login-page.test.tsx
+          agents/components/agent-working-directory-settings.test.tsx
           layout/app-sidebar.test.tsx
           settings/components/repositories-tab.test.tsx
           settings/components/settings-page.test.tsx
@@ -63,11 +64,12 @@ jobs:
           src/shared/runtime-config.test.ts
           src/main/runtime-config-loader.test.ts
           src/main/local-directory.test.ts
+          src/renderer/src/components/private-agent-working-directory.test.tsx
           src/renderer/src/components/daemon-settings-tab.test.tsx
 
       - name: Test CLI workspace cleanup safety
         working-directory: server
-        run: go test ./internal/daemon -run '^TestRunGC_SkipsOrdinaryProjectDirectories$' -count=1
+        run: go test ./internal/daemon -run '^(TestRunGC_SkipsOrdinaryProjectDirectories|TestSynchronizedAgentWorkingDirectoryOverridesAndResetsLegacyMapping)$' -count=1
 
       - name: Typecheck Desktop and shared packages
         run: pnpm typecheck

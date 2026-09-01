@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AppConfigSchema,
+  AgentWorkingDirectorySchema,
   ChildIssueProgressResponseSchema,
   WecomInstallationSchema,
   ListWecomInstallationsResponseSchema,
@@ -1076,6 +1077,46 @@ describe("AppConfigSchema local_worktree_supported drift", () => {
       local_worktree_supported: true,
     });
     expect(parsed.local_worktree_supported).toBe(true);
+  });
+});
+
+describe("AppConfigSchema private login settings", () => {
+  it("keeps legacy clients on the historical resend interval", () => {
+    const parsed = AppConfigSchema.parse({});
+    expect(parsed.login_email_domain).toBeUndefined();
+    expect(parsed.verification_code_resend_interval_seconds).toBe(60);
+  });
+
+  it("accepts an immediate resend policy and fixed login domain", () => {
+    const parsed = AppConfigSchema.parse({
+      login_email_domain: "myhexin.com",
+      verification_code_resend_interval_seconds: 0,
+    });
+    expect(parsed.login_email_domain).toBe("myhexin.com");
+    expect(parsed.verification_code_resend_interval_seconds).toBe(0);
+  });
+});
+
+describe("AgentWorkingDirectorySchema response drift", () => {
+  it("falls back field by field when a newer server returns malformed values", () => {
+    const parsed = AgentWorkingDirectorySchema.parse({
+      agent_id: "agent-1",
+      runtime_id: 42,
+      daemon_id: null,
+      runtime_name: { label: "Office PC" },
+      local_path: ["D:\\work"],
+      available: "yes",
+      future_field: true,
+    });
+    expect(parsed).toMatchObject({
+      agent_id: "agent-1",
+      runtime_id: "",
+      daemon_id: "",
+      runtime_name: "",
+      local_path: "",
+      available: false,
+      future_field: true,
+    });
   });
 });
 

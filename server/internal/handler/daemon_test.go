@@ -723,6 +723,51 @@ func TestClaimTaskByRuntime_WorkspaceContextEmptyWhenUnset(t *testing.T) {
 	}
 }
 
+func TestClaimTaskByRuntimeCarriesSynchronizedAgentWorkingDirectory(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database not available")
+	}
+
+	ctx := context.Background()
+	const daemonID = "working-directory-claim-daemon"
+	runtimeID := dbfx.Runtime(t, "Working directory claim runtime", testutil.Cols{
+		"daemon_id":    daemonID,
+		"runtime_mode": "local",
+		"owner_id":     testUserID,
+	})
+	agentID, issueID := createClaimReclaimAgentAndIssue(t, ctx, runtimeID, "Working directory claim agent")
+	const localPath = `D:\work\claimed-project`
+	put := withURLParam(newRequest(http.MethodPut, "/api/agents/"+agentID+"/working-directory", map[string]string{
+		"local_path": localPath,
+	}), "id", agentID)
+	testutil.Call(t, testHandler.UpdateAgentWorkingDirectory, put).Want(http.StatusOK)
+
+	taskID := createDispatchedClaimFixtureTask(t, ctx, agentID, runtimeID, issueID, "120 seconds", false)
+	req := newDaemonTokenRequest(
+		http.MethodPost,
+		"/api/daemon/runtimes/"+runtimeID+"/tasks/claim",
+		nil,
+		testWorkspaceID,
+		daemonID,
+	)
+	req = withURLParam(req, "runtimeId", runtimeID)
+	w := testutil.Call(t, testHandler.ClaimTaskByRuntime, req).Want(http.StatusOK)
+	var resp struct {
+		Task *struct {
+			ID                            string `json:"id"`
+			AgentWorkingDirectory         string `json:"agent_working_directory"`
+			AgentWorkingDirectoryResolved bool   `json:"agent_working_directory_resolved"`
+		} `json:"task"`
+	}
+	w.JSON(&resp)
+	if resp.Task == nil || resp.Task.ID != taskID {
+		t.Fatalf("claim response = %s, want task %s", w.Body.String(), taskID)
+	}
+	if resp.Task.AgentWorkingDirectory != localPath || !resp.Task.AgentWorkingDirectoryResolved {
+		t.Fatalf("working directory claim fields = %+v", resp.Task)
+	}
+}
+
 func TestClaimTaskByRuntime_MissingRuntimeOwnerCancelsAndRejects(t *testing.T) {
 	if testHandler == nil || testPool == nil {
 		t.Skip("database not available")

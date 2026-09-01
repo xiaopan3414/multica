@@ -1,104 +1,59 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { I18nProvider } from "@multica/core/i18n/react";
-import enAgents from "@multica/views/locales/en/agents.json";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "@testing-library/react";
 import { PrivateAgentWorkingDirectory } from "./private-agent-working-directory";
 
 const AGENT_ID = "7f34eb65-30d5-44c9-9a76-723108504a72";
 const mocks = vi.hoisted(() => ({
-  getAgentWorkingDirectory: vi.fn(),
-  setAgentWorkingDirectory: vi.fn(),
-  pickDirectory: vi.fn(),
-  validateLocalDirectory: vi.fn(),
-  toastSuccess: vi.fn(),
-  toastError: vi.fn(),
+  props: vi.fn(),
 }));
 
-vi.mock("sonner", () => ({
-  toast: {
-    success: mocks.toastSuccess,
-    error: mocks.toastError,
+vi.mock("@multica/views/agents", () => ({
+  AgentWorkingDirectorySettings: (props: unknown) => {
+    mocks.props(props);
+    return null;
   },
 }));
 
-function renderComponent() {
-  return render(
-    <I18nProvider locale="en" resources={{ en: { agents: enAgents } }}>
-      <PrivateAgentWorkingDirectory agentId={AGENT_ID} />
-    </I18nProvider>,
-  );
-}
-
 describe("PrivateAgentWorkingDirectory", () => {
   beforeEach(() => {
-    mocks.getAgentWorkingDirectory.mockReset().mockResolvedValue("");
-    mocks.setAgentWorkingDirectory
-      .mockReset()
-      .mockImplementation(async (_agentId: string, path: string) => ({ path }));
-    mocks.pickDirectory.mockReset();
-    mocks.validateLocalDirectory.mockReset();
-    mocks.toastSuccess.mockReset();
-    mocks.toastError.mockReset();
-
-    Object.defineProperty(window, "daemonAPI", {
-      configurable: true,
-      value: {
-        getAgentWorkingDirectory: mocks.getAgentWorkingDirectory,
-        setAgentWorkingDirectory: mocks.setAgentWorkingDirectory,
-      },
-    });
+    mocks.props.mockReset();
     Object.defineProperty(window, "desktopAPI", {
       configurable: true,
       value: {
-        pickDirectory: mocks.pickDirectory,
-        validateLocalDirectory: mocks.validateLocalDirectory,
+        pickDirectory: vi.fn(),
+        validateLocalDirectory: vi.fn(),
+      },
+    });
+    Object.defineProperty(window, "daemonAPI", {
+      configurable: true,
+      value: {
+        getAgentWorkingDirectory: vi.fn(),
+        setAgentWorkingDirectory: vi.fn().mockResolvedValue({ path: "" }),
       },
     });
   });
 
-  afterEach(cleanup);
+  it("wires the native picker and legacy Desktop migration adapter", async () => {
+    render(<PrivateAgentWorkingDirectory agentId={AGENT_ID} />);
+    const props = mocks.props.mock.calls[0]?.[0] as {
+      agentId: string;
+      platform: {
+        pickDirectory: (path?: string) => Promise<unknown>;
+        validateDirectory: (path: string) => Promise<unknown>;
+        getLegacyDirectory: (agentId: string) => Promise<string>;
+        clearLegacyDirectory: (agentId: string) => Promise<void>;
+      };
+    };
+    expect(props.agentId).toBe(AGENT_ID);
 
-  it("loads and displays the private path stored on this computer", async () => {
-    const path = "D:\\work\\existing-project";
-    mocks.getAgentWorkingDirectory.mockResolvedValue(path);
-    renderComponent();
+    await props.platform.pickDirectory("D:\\work");
+    await props.platform.validateDirectory("D:\\work");
+    await props.platform.getLegacyDirectory(AGENT_ID);
+    await props.platform.clearLegacyDirectory(AGENT_ID);
 
-    expect(await screen.findByText(path)).toBeInTheDocument();
-    expect(mocks.getAgentWorkingDirectory).toHaveBeenCalledWith(AGENT_ID);
-  });
-
-  it("validates and saves a directory selected with the native picker", async () => {
-    const path = "D:\\work\\existing-project";
-    mocks.pickDirectory.mockResolvedValue({ ok: true, path });
-    mocks.validateLocalDirectory.mockResolvedValue({ ok: true });
-    renderComponent();
-
-    const choose = await screen.findByRole("button", { name: "Choose folder" });
-    await waitFor(() => expect(choose).toBeEnabled());
-    fireEvent.click(choose);
-
-    await waitFor(() => {
-      expect(mocks.validateLocalDirectory).toHaveBeenCalledWith(path);
-      expect(mocks.setAgentWorkingDirectory).toHaveBeenCalledWith(
-        AGENT_ID,
-        path,
-      );
-      expect(screen.getByText(path)).toBeInTheDocument();
-    });
-  });
-
-  it("removes the private mapping when Use default is selected", async () => {
-    const path = "D:\\work\\existing-project";
-    mocks.getAgentWorkingDirectory.mockResolvedValue(path);
-    renderComponent();
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Use default" }),
-    );
-
-    await waitFor(() => {
-      expect(mocks.setAgentWorkingDirectory).toHaveBeenCalledWith(AGENT_ID, "");
-      expect(screen.getByText("Use the normal task workspace")).toBeInTheDocument();
-    });
+    expect(window.desktopAPI.pickDirectory).toHaveBeenCalledWith("D:\\work");
+    expect(window.desktopAPI.validateLocalDirectory).toHaveBeenCalledWith("D:\\work");
+    expect(window.daemonAPI.getAgentWorkingDirectory).toHaveBeenCalledWith(AGENT_ID);
+    expect(window.daemonAPI.setAgentWorkingDirectory).toHaveBeenCalledWith(AGENT_ID, "");
   });
 });

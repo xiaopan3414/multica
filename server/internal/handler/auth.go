@@ -275,6 +275,33 @@ func contains(slice []string, s string) bool {
 	return false
 }
 
+func normalizeLoginEmailDomain(domain string) string {
+	return strings.TrimPrefix(strings.ToLower(strings.TrimSpace(domain)), "@")
+}
+
+func (h *Handler) loginEmailDomain() string {
+	return normalizeLoginEmailDomain(h.cfg.LoginEmailDomain)
+}
+
+func (h *Handler) verificationCodeResendInterval() time.Duration {
+	if h.cfg.VerificationCodeResendInterval == nil {
+		return 60 * time.Second
+	}
+	return max(*h.cfg.VerificationCodeResendInterval, 0)
+}
+
+func (h *Handler) validateLoginEmailDomain(email string) error {
+	domain := h.loginEmailDomain()
+	if domain == "" {
+		return nil
+	}
+	local, actualDomain, ok := strings.Cut(email, "@")
+	if !ok || strings.TrimSpace(local) == "" || strings.ContainsAny(local, " \t\r\n") || strings.Contains(actualDomain, "@") || !strings.EqualFold(actualDomain, domain) {
+		return fmt.Errorf("email must use @%s", domain)
+	}
+	return nil
+}
+
 func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	var req SendCodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -285,6 +312,10 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if email == "" {
 		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+	if err := h.validateLoginEmailDomain(email); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if auth.IsTemporarilyDisabledUserEmail(email) {
@@ -330,11 +361,15 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Rate limit: max 1 code per 60 seconds per email
-	latest, err := h.Queries.GetLatestCodeByEmail(r.Context(), email)
-	if err == nil && time.Since(latest.CreatedAt.Time) < 60*time.Second {
-		writeError(w, http.StatusTooManyRequests, "please wait before requesting another code")
-		return
+	// Per-email resend cooldown. Deployments that deliver codes through an
+	// internal channel may explicitly set it to zero; brute-force verification
+	// attempt protection and the other request/IP limits remain unchanged.
+	if resendInterval := h.verificationCodeResendInterval(); resendInterval > 0 {
+		latest, latestErr := h.Queries.GetLatestCodeByEmail(r.Context(), email)
+		if latestErr == nil && time.Since(latest.CreatedAt.Time) < resendInterval {
+			writeError(w, http.StatusTooManyRequests, "please wait before requesting another code")
+			return
+		}
 	}
 
 	code, err := generateCode()
@@ -378,6 +413,10 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 
 	if email == "" || code == "" {
 		writeError(w, http.StatusBadRequest, "email and code are required")
+		return
+	}
+	if err := h.validateLoginEmailDomain(email); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if auth.IsTemporarilyDisabledUserEmail(email) {
@@ -578,6 +617,10 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := strings.ToLower(strings.TrimSpace(gUser.Email))
+	if err := h.validateLoginEmailDomain(email); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
 	if auth.IsTemporarilyDisabledUserEmail(email) {
 		writeError(w, http.StatusForbidden, auth.TemporarilyDisabledUserError)
 		return

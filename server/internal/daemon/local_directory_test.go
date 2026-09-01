@@ -303,6 +303,38 @@ func TestPrivateAgentWorkingDirectoryFallbackAndLeaderBehavior(t *testing.T) {
 	}
 }
 
+func TestSynchronizedAgentWorkingDirectoryOverridesAndResetsLegacyMapping(t *testing.T) {
+	const agentID = "7f34eb65-30d5-44c9-9a76-723108504a72"
+	legacyPath := t.TempDir()
+	synchronizedPath := t.TempDir()
+	d := &Daemon{cfg: Config{AgentWorkingDirectories: map[string]string{
+		agentID: legacyPath,
+	}}}
+
+	assignment, err := d.localDirectoryAssignmentForTask(Task{
+		AgentID:                       agentID,
+		AgentWorkingDirectory:         synchronizedPath,
+		AgentWorkingDirectoryResolved: true,
+	})
+	if err != nil {
+		t.Fatalf("resolve synchronized assignment: %v", err)
+	}
+	if assignment == nil || assignment.AbsPath != filepath.Clean(synchronizedPath) {
+		t.Fatalf("assignment = %+v, want synchronized path %q", assignment, synchronizedPath)
+	}
+
+	assignment, err = d.localDirectoryAssignmentForTask(Task{
+		AgentID:                       agentID,
+		AgentWorkingDirectoryResolved: true,
+	})
+	if err != nil {
+		t.Fatalf("resolve synchronized reset: %v", err)
+	}
+	if assignment != nil {
+		t.Fatalf("assignment after server reset = %+v, want nil", assignment)
+	}
+}
+
 func TestPrivateAgentWorkingDirectoriesShareRealPathLock(t *testing.T) {
 	path := t.TempDir()
 	d := &Daemon{cfg: Config{AgentWorkingDirectories: map[string]string{

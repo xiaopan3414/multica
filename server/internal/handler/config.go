@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/multica-ai/multica/server/internal/analytics"
 	"github.com/multica-ai/multica/server/internal/featureflags"
@@ -28,6 +29,12 @@ type AppConfig struct {
 	// VerificationCodeDeliveryHint lets self-hosted deployments explain an
 	// operator-specific out-of-band delivery channel on the code entry screen.
 	VerificationCodeDeliveryHint string `json:"verification_code_delivery_hint,omitempty"`
+	// LoginEmailDomain lets clients render an immutable domain suffix instead
+	// of accepting an address the backend will reject.
+	LoginEmailDomain string `json:"login_email_domain,omitempty"`
+	// VerificationCodeResendIntervalSeconds mirrors the backend cooldown. Zero
+	// means the resend action is immediately available.
+	VerificationCodeResendIntervalSeconds int `json:"verification_code_resend_interval_seconds"`
 	// GitHubIntegrationAvailable lets private deployments hide the GitHub App
 	// surfaces without removing backend compatibility or stored integration data.
 	GitHubIntegrationAvailable bool `json:"github_integration_available"`
@@ -102,6 +109,10 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		GoogleClientID:         os.Getenv("GOOGLE_CLIENT_ID"),
 		VerificationCodeDeliveryHint: strings.TrimSpace(
 			os.Getenv("VERIFICATION_CODE_DELIVERY_HINT"),
+		),
+		LoginEmailDomain: normalizeLoginEmailDomain(h.cfg.LoginEmailDomain),
+		VerificationCodeResendIntervalSeconds: int(
+			h.verificationCodeResendInterval() / time.Second,
 		),
 		GitHubIntegrationAvailable: os.Getenv("GITHUB_INTEGRATION_ENABLED") != "false",
 		WorkspaceCreationDisabled:  os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",

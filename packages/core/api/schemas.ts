@@ -3,6 +3,7 @@ import type {
   AgentBuilderRuntimeSwitch,
   AgentBuilderSession,
   AgentBuilderSessionSummary,
+  AgentWorkingDirectory,
   Attachment,
   AutopilotRun,
   BillingBalance,
@@ -729,6 +730,8 @@ export interface AppConfigResponse {
   allow_signup: boolean;
   google_client_id?: string;
   verification_code_delivery_hint?: string;
+  login_email_domain?: string;
+  verification_code_resend_interval_seconds?: number;
   github_integration_available?: boolean;
   posthog_key?: string;
   posthog_host?: string;
@@ -937,6 +940,8 @@ export const AppConfigSchema = z.object({
   allow_signup: BooleanWithDefaultSchema(true),
   google_client_id: OptionalStringSchema,
   verification_code_delivery_hint: OptionalStringSchema,
+  login_email_domain: OptionalStringSchema,
+  verification_code_resend_interval_seconds: z.number().int().nonnegative().catch(60).default(60),
   github_integration_available: BooleanWithDefaultSchema(true),
   posthog_key: OptionalStringSchema,
   posthog_host: OptionalStringSchema,
@@ -956,6 +961,8 @@ export const EMPTY_APP_CONFIG: AppConfigResponse = {
   allow_signup: true,
   google_client_id: "",
   verification_code_delivery_hint: "",
+  login_email_domain: "",
+  verification_code_resend_interval_seconds: 60,
   github_integration_available: true,
   daemon_server_url: "",
   daemon_app_url: "",
@@ -1764,6 +1771,24 @@ export const AgentTaskSchema = z.object({
 }).loose();
 
 export const AgentTaskListSchema = z.array(AgentTaskSchema);
+
+export const AgentWorkingDirectorySchema = z.object({
+  agent_id: z.string().catch("").default(""),
+  runtime_id: z.string().catch("").default(""),
+  daemon_id: z.string().catch("").default(""),
+  runtime_name: z.string().catch("").default(""),
+  local_path: z.string().catch("").default(""),
+  available: z.boolean().catch(false).default(false),
+}).loose();
+
+export const EMPTY_AGENT_WORKING_DIRECTORY: AgentWorkingDirectory = {
+  agent_id: "",
+  runtime_id: "",
+  daemon_id: "",
+  runtime_name: "",
+  local_path: "",
+  available: false,
+};
 
 // Task cancellation (`POST /api/tasks/:id/cancel`) is consumed directly by
 // chat recovery. Its optional message payload must be well-formed before the

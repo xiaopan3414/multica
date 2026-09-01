@@ -10,6 +10,8 @@ interface ConfigState {
   allowSignup: boolean;
   googleClientId: string;
   verificationCodeDeliveryHint: string;
+  loginEmailDomain: string;
+  verificationCodeResendIntervalSeconds: number;
   githubIntegrationAvailable: boolean;
   daemonServerUrl: string;
   daemonAppUrl: string;
@@ -39,6 +41,8 @@ interface ConfigState {
     allowSignup: boolean;
     googleClientId?: string;
     verificationCodeDeliveryHint?: string;
+    loginEmailDomain?: string;
+    verificationCodeResendIntervalSeconds?: number;
     githubIntegrationAvailable?: boolean;
     workspaceCreationDisabled?: boolean;
     vcsIntegrationAvailable?: boolean;
@@ -58,6 +62,8 @@ export const configStore = createStore<ConfigState>((set) => ({
   allowSignup: true,
   googleClientId: "",
   verificationCodeDeliveryHint: "",
+  loginEmailDomain: "",
+  verificationCodeResendIntervalSeconds: 60,
   githubIntegrationAvailable: true,
   daemonServerUrl: "",
   daemonAppUrl: "",
@@ -71,6 +77,8 @@ export const configStore = createStore<ConfigState>((set) => ({
     allowSignup,
     googleClientId = "",
     verificationCodeDeliveryHint = "",
+    loginEmailDomain = "",
+    verificationCodeResendIntervalSeconds = 60,
     githubIntegrationAvailable = true,
     workspaceCreationDisabled = false,
     vcsIntegrationAvailable = false,
@@ -78,6 +86,8 @@ export const configStore = createStore<ConfigState>((set) => ({
     allowSignup,
     googleClientId,
     verificationCodeDeliveryHint,
+    loginEmailDomain,
+    verificationCodeResendIntervalSeconds,
     githubIntegrationAvailable,
     workspaceCreationDisabled,
     vcsIntegrationAvailable,

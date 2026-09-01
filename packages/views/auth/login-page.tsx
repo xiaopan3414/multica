@@ -112,6 +112,16 @@ export function LoginPage({
   const verificationCodeDeliveryHint = useConfigStore(
     (state) => state.verificationCodeDeliveryHint,
   ).trim();
+  const loginEmailDomain = useConfigStore((state) => state.loginEmailDomain)
+    .trim()
+    .replace(/^@/, "")
+    .toLowerCase();
+  const resendIntervalSeconds = Math.max(
+    0,
+    Math.floor(
+      useConfigStore((state) => state.verificationCodeResendIntervalSeconds),
+    ),
+  );
   const [step, setStep] = useState<"email" | "code" | "cli_confirm">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -119,6 +129,9 @@ export function LoginPage({
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [existingUser, setExistingUser] = useState<User | null>(null);
+  const submittedEmail = loginEmailDomain
+    ? `${email.trim()}@${loginEmailDomain}`
+    : email.trim();
   // Tracks how the existing session was detected so handleCliAuthorize
   // uses the matching token source (cookie → issueCliToken, localStorage → direct).
   const authSourceRef = useRef<"cookie" | "localStorage">("cookie");
@@ -169,17 +182,21 @@ export function LoginPage({
   const handleSendCode = useCallback(
     async (e?: React.FormEvent) => {
       e?.preventDefault();
-      if (!email) {
+      if (!email.trim()) {
         setError(t(($) => $.common.email_required));
+        return;
+      }
+      if (loginEmailDomain && (email.includes("@") || /\s/.test(email.trim()))) {
+        setError(t(($) => $.common.email_local_part_invalid));
         return;
       }
       setLoading(true);
       setError("");
       try {
-        await useAuthStore.getState().sendCode(email);
+        await useAuthStore.getState().sendCode(submittedEmail);
         setStep("code");
         setCode("");
-        setCooldown(60);
+        setCooldown(resendIntervalSeconds);
       } catch (err) {
         setError(
           err instanceof Error
@@ -190,7 +207,7 @@ export function LoginPage({
         setLoading(false);
       }
     },
-    [email, t],
+    [email, loginEmailDomain, resendIntervalSeconds, submittedEmail, t],
   );
 
   const handleVerify = useCallback(
@@ -201,7 +218,7 @@ export function LoginPage({
       try {
         if (cliCallback) {
           // CLI path: get token directly for the redirect URL
-          const { token } = await api.verifyCode(email, value);
+          const { token } = await api.verifyCode(submittedEmail, value);
           localStorage.setItem("multica_token", token);
           api.setToken(token);
           onTokenObtained?.();
@@ -213,7 +230,7 @@ export function LoginPage({
         // caller's onSuccess can read it synchronously to compute a destination
         // URL (first workspace's slug, or /workspaces/new for zero-workspace
         // users).
-        await useAuthStore.getState().verifyCode(email, value);
+        await useAuthStore.getState().verifyCode(submittedEmail, value);
         const wsList = await api.listWorkspaces();
         qc.setQueryData(workspaceKeys.list(), wsList);
         onTokenObtained?.();
@@ -228,15 +245,15 @@ export function LoginPage({
         setLoading(false);
       }
     },
-    [email, onSuccess, cliCallback, onTokenObtained, qc, t],
+    [submittedEmail, onSuccess, cliCallback, onTokenObtained, qc, t],
   );
 
   const handleResend = async () => {
     if (cooldown > 0) return;
     setError("");
     try {
-      await useAuthStore.getState().sendCode(email);
-      setCooldown(60);
+      await useAuthStore.getState().sendCode(submittedEmail);
+      setCooldown(resendIntervalSeconds);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : t(($) => $.errors.resend_failed),
@@ -351,8 +368,8 @@ export function LoginPage({
             </CardTitle>
             <CardDescription>
               {verificationCodeDeliveryHint
-                ? t(($) => $.verify.code_description, { email })
-                : t(($) => $.verify.description, { email })}
+                ? t(($) => $.verify.code_description, { email: submittedEmail })
+                : t(($) => $.verify.description, { email: submittedEmail })}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
@@ -438,15 +455,48 @@ export function LoginPage({
           <form id="login-form" onSubmit={handleSendCode} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="login-email">{t(($) => $.common.email)}</Label>
-              <Input
-                id="login-email"
-                type="email"
-                placeholder={t(($) => $.common.email_placeholder)}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoFocus
-                required
-              />
+              {loginEmailDomain ? (
+                <div className="flex min-w-0 items-stretch rounded-md border border-input bg-background shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+                  <Input
+                    id="login-email"
+                    type="text"
+                    inputMode="email"
+                    autoComplete="username"
+                    aria-describedby="login-email-domain"
+                    placeholder={t(($) => $.common.email_local_part_placeholder)}
+                    value={email}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const suffix = `@${loginEmailDomain}`;
+                      setEmail(
+                        next.toLowerCase().endsWith(suffix)
+                          ? next.slice(0, -suffix.length)
+                          : next,
+                      );
+                    }}
+                    className="min-w-0 flex-1 rounded-r-none border-0 shadow-none focus-visible:border-transparent focus-visible:ring-0"
+                    autoFocus
+                    required
+                  />
+                  <span
+                    id="login-email-domain"
+                    className="flex shrink-0 items-center border-l border-input bg-muted/50 px-3 text-body text-muted-foreground"
+                  >
+                    @{loginEmailDomain}
+                  </span>
+                </div>
+              ) : (
+                <Input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder={t(($) => $.common.email_placeholder)}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoFocus
+                  required
+                />
+              )}
             </div>
             {error && (
               <p className="text-body text-destructive">{error}</p>
@@ -459,7 +509,7 @@ export function LoginPage({
             form="login-form"
             className="w-full"
             size="lg"
-            disabled={!email || loading}
+            disabled={!email.trim() || loading}
           >
             {loading
               ? t(($) => $.signin.sending)

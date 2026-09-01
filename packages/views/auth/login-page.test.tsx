@@ -200,6 +200,42 @@ describe("LoginPage", () => {
     expect(screen.getByText(/test@example.com/)).toBeInTheDocument();
   });
 
+  it("renders a fixed domain suffix and submits the combined email", async () => {
+    configStore.getState().setAuthConfig({
+      allowSignup: true,
+      loginEmailDomain: "myhexin.com",
+      verificationCodeResendIntervalSeconds: 0,
+    });
+    mockSendCode.mockResolvedValueOnce(undefined);
+    renderWithI18n(<LoginPage onSuccess={onSuccess} />);
+
+    expect(screen.getByText("@myhexin.com")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/email/i), "zhangsan");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(mockSendCode).toHaveBeenCalledWith("zhangsan@myhexin.com");
+    expect(
+      await screen.findByRole("button", { name: /resend code/i }),
+    ).toBeEnabled();
+  });
+
+  it("strips the configured suffix when a full matching email is pasted", async () => {
+    configStore.getState().setAuthConfig({
+      allowSignup: true,
+      loginEmailDomain: "myhexin.com",
+      verificationCodeResendIntervalSeconds: 0,
+    });
+    mockSendCode.mockResolvedValueOnce(undefined);
+    renderWithI18n(<LoginPage onSuccess={onSuccess} />);
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/email/i), "lisi@myhexin.com");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(mockSendCode).toHaveBeenCalledWith("lisi@myhexin.com");
+  });
+
   it("shows the operator delivery hint instead of telling the user to check email", async () => {
     configStore.getState().setAuthConfig({
       allowSignup: true,

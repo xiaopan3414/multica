@@ -796,6 +796,20 @@ export interface AgentEnvResponse {
 }
 
 /**
+ * Private machine-scoped path returned only by the dedicated working-directory
+ * endpoint. `available=false` means the agent is not currently bound to a
+ * daemon-backed local runtime, so no path can be configured yet.
+ */
+export interface AgentWorkingDirectory {
+  agent_id: string;
+  runtime_id: string;
+  daemon_id: string;
+  runtime_name: string;
+  local_path: string;
+  available: boolean;
+}
+
+/**
  * Body for `PUT /api/agents/{id}/env`. Values equal to `"****"` are
  * treated by the server as "preserve the existing value for this key"
  * — a defence-in-depth guard so a UI that round-trips a masked map

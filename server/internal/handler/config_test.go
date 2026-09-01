@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/multica-ai/multica/server/internal/auth"
 	"github.com/multica-ai/multica/server/internal/testutil"
@@ -525,7 +526,11 @@ func TestGetConfigExposesPrivateDeploymentAuthUISettings(t *testing.T) {
 	t.Setenv("VERIFICATION_CODE_DELIVERY_HINT", "  Check Feiq for the verification code.  ")
 	t.Setenv("GITHUB_INTEGRATION_ENABLED", "false")
 
-	h := &Handler{}
+	zero := time.Duration(0)
+	h := &Handler{cfg: Config{
+		LoginEmailDomain:               " @MyHexin.com ",
+		VerificationCodeResendInterval: &zero,
+	}}
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	w := httptest.NewRecorder()
 	h.GetConfig(w, req)
@@ -539,6 +544,12 @@ func TestGetConfigExposesPrivateDeploymentAuthUISettings(t *testing.T) {
 	}
 	if cfg.VerificationCodeDeliveryHint != "Check Feiq for the verification code." {
 		t.Fatalf("verification_code_delivery_hint = %q", cfg.VerificationCodeDeliveryHint)
+	}
+	if cfg.LoginEmailDomain != "myhexin.com" {
+		t.Fatalf("login_email_domain = %q", cfg.LoginEmailDomain)
+	}
+	if cfg.VerificationCodeResendIntervalSeconds != 0 {
+		t.Fatalf("verification_code_resend_interval_seconds = %d", cfg.VerificationCodeResendIntervalSeconds)
 	}
 	if cfg.GitHubIntegrationAvailable {
 		t.Fatal("github_integration_available: want false when explicitly disabled")

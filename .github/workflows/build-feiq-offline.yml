@@ -6,7 +6,7 @@ on:
       image_tag:
         description: Local Docker image tag
         required: true
-        default: feiq-v0.4.34.1
+        default: feiq-v0.4.34.2
 
 permissions:
   contents: read
@@ -63,17 +63,18 @@ jobs:
         working-directory: server
         run: |
           go test ./internal/service -run '^TestSendVerificationCodeDevLogIncludesClientIP$' -count=1
-          go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings)$' -count=1
+          go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings|TestSendCodeResendCooldownCanBeDisabled|TestVerificationCodeLoginDomainAppliesToExistingUsers|TestAgentWorkingDirectoryAPI.*|TestClaimTaskByRuntimeCarriesSynchronizedAgentWorkingDirectory)$' -count=1
 
       - name: Test core configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts platform/auth-initializer.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts platform/auth-initializer.test.tsx
 
       - name: Test shared views
         working-directory: packages/views
         run: >-
           pnpm exec vitest run
           auth/login-page.test.tsx
+          agents/components/agent-working-directory-settings.test.tsx
           layout/app-sidebar.test.tsx
           settings/components/repositories-tab.test.tsx
           settings/components/settings-page.test.tsx

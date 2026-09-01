@@ -69,6 +69,8 @@ Changes take effect after restarting the backend / compose stack. The web UI rea
 | `ALLOW_SIGNUP` | Set to `false` to disable new user signups on a private instance |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated allowlist of email domains |
 | `ALLOWED_EMAILS` | Optional comma-separated allowlist of exact email addresses |
+| `LOGIN_EMAIL_DOMAIN` | Optional strict login domain for existing and new users; clients render it as a fixed suffix |
+| `VERIFICATION_CODE_RESEND_INTERVAL_SECONDS` | Per-email code resend cooldown in seconds; defaults to `60`, and `0` disables it |
 | `DISABLE_WORKSPACE_CREATION` | Set to `true` to make `POST /api/workspaces` return 403 for every caller — users can only join workspaces they were invited to |
 
 Changes take effect after restarting the backend / compose stack. The web UI reads `ALLOW_SIGNUP` and `DISABLE_WORKSPACE_CREATION` from `/api/config` at runtime, so no web rebuild is needed.

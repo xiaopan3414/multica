@@ -154,6 +154,13 @@ func (d *Daemon) privateAgentWorkingDirectory(task Task) (string, bool) {
 	if task.IsLeaderTask || strings.TrimSpace(task.AgentID) == "" {
 		return "", false
 	}
+	if task.AgentWorkingDirectoryResolved {
+		path := strings.TrimSpace(task.AgentWorkingDirectory)
+		return path, path != ""
+	}
+	// Compatibility with servers predating the synchronized claim field. Once
+	// a new server resolves the setting, even an empty value is authoritative
+	// and this local fallback is intentionally ignored.
 	path := strings.TrimSpace(d.cfg.AgentWorkingDirectories[task.AgentID])
 	return path, path != ""
 }

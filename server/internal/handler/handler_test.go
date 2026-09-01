@@ -2197,6 +2197,44 @@ func TestSendCodeRateLimit(t *testing.T) {
 	}
 }
 
+func TestSendCodeResendCooldownCanBeDisabled(t *testing.T) {
+	const email = "resend-disabled-test@multica.ai"
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM verification_code WHERE email = $1`, email)
+	})
+
+	zero := time.Duration(0)
+	h := *testHandler
+	h.cfg.VerificationCodeResendInterval = &zero
+	body := map[string]string{"email": email}
+	for attempt := 1; attempt <= 2; attempt++ {
+		req := newRequest(http.MethodPost, "/auth/send-code", body)
+		testutil.Call(t, h.SendCode, req).Want(http.StatusOK)
+	}
+}
+
+func TestVerificationCodeLoginDomainAppliesToExistingUsers(t *testing.T) {
+	h := *testHandler
+	h.cfg.LoginEmailDomain = "myhexin.com"
+
+	for _, tc := range []struct {
+		name    string
+		handler http.HandlerFunc
+		body    map[string]string
+	}{
+		{"send", h.SendCode, map[string]string{"email": "existing@multica.ai"}},
+		{"verify", h.VerifyCode, map[string]string{"email": "existing@multica.ai", "code": "123456"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := newRequest(http.MethodPost, "/auth/"+tc.name+"-code", tc.body)
+			w := testutil.Call(t, tc.handler, req).Want(http.StatusBadRequest)
+			if !strings.Contains(w.Body.String(), "@myhexin.com") {
+				t.Fatalf("response = %s, want configured domain", w.Body.String())
+			}
+		})
+	}
+}
+
 func TestVerifyCode(t *testing.T) {
 	const email = "verify-test@multica.ai"
 	ctx := context.Background()

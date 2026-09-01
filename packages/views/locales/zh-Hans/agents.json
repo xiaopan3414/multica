@@ -193,10 +193,12 @@
     "save": "保存",
     "cancel": "取消",
     "private_working_directory": {
-      "title": "这台电脑上的私有工作目录",
-      "section_hint": "此绑定只保存在本机 Desktop 配置中，不会创建其他人可见的项目资源。",
+      "title": "私有本地工作目录",
+      "section_hint": "配置按当前承载智能体的机器保存，只有智能体管理员可见，不会创建共享项目资源。",
       "folder_label": "智能体运行目录",
-      "folder_hint": "这台电脑领取该智能体的 task 后会直接修改现有目录；使用同一目录的 task 会依次运行。",
+      "folder_hint": "当前机器会直接修改现有目录；使用同一目录的 task 会依次运行。",
+      "machine_scope": "当前机器：{{runtime}}。执行前由该机器在本地校验路径。",
+      "unavailable": "请先将智能体绑定到本地运行时，再设置目录。",
       "default_path": "使用普通 task 工作区",
       "loading": "正在加载...",
       "choose": "选择文件夹",
@@ -208,7 +210,8 @@
       "load_failed": "无法读取私有工作目录",
       "save_failed": "无法保存私有工作目录",
       "picker_failed": "无法打开文件夹选择器",
-      "invalid_folder": "所选文件夹必须存在，并且可读写。"
+      "invalid_folder": "所选文件夹必须存在，并且可读写。",
+      "sync_failed": "无法同步原 Desktop 工作目录"
     }
   },
   "overview": {

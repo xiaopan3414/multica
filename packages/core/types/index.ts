@@ -40,6 +40,7 @@ export type {
   StoredAgentDraft,
   UpdateAgentRequest,
   AgentEnvResponse,
+  AgentWorkingDirectory,
   UpdateAgentEnvRequest,
   Skill,
   SkillSummary,

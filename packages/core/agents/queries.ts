@@ -123,6 +123,20 @@ export const agentTasksKeys = {
     [...agentTasksKeys.all(wsId), agentId] as const,
 };
 
+export const agentWorkingDirectoryKeys = {
+  detail: (wsId: string, agentId: string) =>
+    ["workspaces", wsId, "agents", agentId, "working-directory"] as const,
+};
+
+export function agentWorkingDirectoryOptions(wsId: string, agentId: string) {
+  return queryOptions({
+    queryKey: agentWorkingDirectoryKeys.detail(wsId, agentId),
+    queryFn: () => api.getAgentWorkingDirectory(agentId),
+    enabled: wsId.length > 0 && agentId.length > 0,
+    staleTime: 30 * 1000,
+  });
+}
+
 // All tasks for a single agent (the agent detail page consumer). Powers both
 // the inspector's 7-day throughput stats and the Tasks tab list — shared so
 // they don't fetch twice. WS task events invalidate this via the existing

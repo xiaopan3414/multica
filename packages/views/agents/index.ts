@@ -1,4 +1,9 @@
-export { AgentsPage, AgentDetailPage } from "./components";
+export {
+  AgentsPage,
+  AgentDetailPage,
+  AgentWorkingDirectorySettings,
+  type AgentWorkingDirectoryPlatformAdapter,
+} from "./components";
 export {
   ChooseCreateMethodPage,
   ManualCreateAgentPage,

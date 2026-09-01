@@ -252,6 +252,8 @@ describe("AuthInitializer recovery", () => {
       getConfig: vi.fn().mockResolvedValue({
         allow_signup: true,
         verification_code_delivery_hint: "Check Feiq for the code.",
+        login_email_domain: "myhexin.com",
+        verification_code_resend_interval_seconds: 0,
         github_integration_available: false,
       }),
     });
@@ -261,6 +263,10 @@ describe("AuthInitializer recovery", () => {
       expect(configStore.getState().verificationCodeDeliveryHint).toBe(
         "Check Feiq for the code.",
       );
+      expect(configStore.getState().loginEmailDomain).toBe("myhexin.com");
+      expect(
+        configStore.getState().verificationCodeResendIntervalSeconds,
+      ).toBe(0);
       expect(configStore.getState().githubIntegrationAvailable).toBe(false);
     });
   });

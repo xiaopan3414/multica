@@ -52,6 +52,8 @@ type Agent struct {
 	SystemKey             pgtype.Text `json:"system_key"`
 	DisabledRuntimeSkills []byte      `json:"disabled_runtime_skills"`
 	ServiceTier           pgtype.Text `json:"service_tier"`
+	// Private daemon_id -> absolute local path mappings. Exposed only through the dedicated agent working-directory API and daemon claim payload.
+	LocalWorkingDirectories []byte `json:"local_working_directories"`
 }
 
 type AgentBuilderDraft struct {

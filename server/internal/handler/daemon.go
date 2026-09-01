@@ -2072,6 +2072,26 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			message: "failed to load task agent",
 		}
 	}
+	resp.AgentWorkingDirectoryResolved = true
+	if runtime.DaemonID.Valid {
+		resp.AgentWorkingDirectory, err = agentWorkingDirectoryForDaemon(
+			agent.LocalWorkingDirectories,
+			runtime.DaemonID.String,
+		)
+		if err != nil {
+			slog.Error("daemon claim: parse agent working directory failed; requeueing claim",
+				"task_id", uuidToString(task.ID), "agent_id", uuidToString(agent.ID), "error", err)
+			if _, requeueErr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), *task); requeueErr != nil {
+				slog.Error("daemon claim: requeue after working directory failure failed; stale reclaim will recover it",
+					"task_id", uuidToString(task.ID), "error", requeueErr)
+			}
+			return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+				outcome: "error_load_agent_working_directory",
+				status:  http.StatusInternalServerError,
+				message: "failed to load agent working directory",
+			}
+		}
+	}
 	useSkillRefs := requestHasClientCapability(r, protocol.DaemonCapabilitySkillBundlesV1)
 	var customEnv map[string]string
 	if agent.CustomEnv != nil {

@@ -201,10 +201,12 @@
     "save": "Save",
     "cancel": "Cancel",
     "private_working_directory": {
-      "title": "Private working directory on this computer",
-      "section_hint": "This mapping stays in the local Desktop profile and is not added as a shared project resource.",
+      "title": "Private local working directory",
+      "section_hint": "Saved for the machine that currently hosts this agent and visible only to agent managers. It is not a shared project resource.",
       "folder_label": "Run this agent in",
-      "folder_hint": "Tasks claimed by this computer edit the existing folder directly. Tasks sharing the same folder run one at a time.",
+      "folder_hint": "This machine edits the existing folder directly. Tasks sharing the same folder run one at a time.",
+      "machine_scope": "Current machine: {{runtime}}. It validates the path locally before execution.",
+      "unavailable": "Bind this agent to a local runtime before setting a directory.",
       "default_path": "Use the normal task workspace",
       "loading": "Loading...",
       "choose": "Choose folder",
@@ -216,7 +218,8 @@
       "load_failed": "Could not load the private working directory",
       "save_failed": "Could not save the private working directory",
       "picker_failed": "Could not open the folder picker",
-      "invalid_folder": "The selected folder must exist and be readable and writable."
+      "invalid_folder": "The selected folder must exist and be readable and writable.",
+      "sync_failed": "Could not synchronize the previous Desktop working directory"
     }
   },
   "overview": {

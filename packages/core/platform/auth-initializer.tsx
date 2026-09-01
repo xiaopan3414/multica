@@ -70,6 +70,9 @@ export function AuthInitializer({
           allowSignup: cfg.allow_signup,
           googleClientId: cfg.google_client_id,
           verificationCodeDeliveryHint: cfg.verification_code_delivery_hint,
+          loginEmailDomain: cfg.login_email_domain,
+          verificationCodeResendIntervalSeconds:
+            cfg.verification_code_resend_interval_seconds,
           githubIntegrationAvailable: cfg.github_integration_available !== false,
           // Old servers omit this field — treat that as "creation allowed"
           // (the managed-cloud default) rather than blocking the UI.
