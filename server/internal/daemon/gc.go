@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	"github.com/multica-ai/multica/server/internal/daemon/processtree"
 	"github.com/multica-ai/multica/server/internal/daemon/repocache"
@@ -99,6 +100,15 @@ func (d *Daemon) runGC(ctx context.Context) {
 		// mtime went 72h without a new bundle. That reclaimed a few hundred KB
 		// and cost a full re-download.
 		if !wsEntry.IsDir() || strings.HasPrefix(wsEntry.Name(), ".") {
+			continue
+		}
+		// Workspace directories are always canonical UUIDs. A custom
+		// WorkspacesRoot may accidentally point at a parent folder containing
+		// real projects; fail closed instead of interpreting those projects as
+		// daemon-owned data eligible for recursive GC.
+		workspaceID, parseErr := uuid.Parse(wsEntry.Name())
+		if parseErr != nil || workspaceID.String() != strings.ToLower(wsEntry.Name()) {
+			d.logger.Warn("gc: skipping unrecognized root directory", "dir", filepath.Join(root, wsEntry.Name()))
 			continue
 		}
 		wsDir := filepath.Join(root, wsEntry.Name())

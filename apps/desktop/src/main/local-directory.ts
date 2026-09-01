@@ -1,5 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from "electron";
-import { access, stat } from "fs/promises";
+import { access, readdir, readFile, stat } from "fs/promises";
 import { constants as fsConstants } from "fs";
 import { basename, dirname, isAbsolute, join } from "path";
 
@@ -35,6 +35,24 @@ export interface ValidateLocalDirectoryResult {
   is_git_repo?: boolean;
 }
 
+export interface ValidateWorkspacesRootResult {
+  ok: boolean;
+  reason?: ValidateLocalDirectoryResult["reason"] | "contains_unmanaged_content";
+  error?: string;
+}
+
+const WORKSPACES_ROOT_MARKER = join(
+  ".multica",
+  "daemon_task_context.json",
+);
+const WORKSPACES_ROOT_INTERNAL_ENTRIES = new Set([
+  ".multica",
+  ".repos",
+  ".skill-cache",
+]);
+const CANONICAL_UUID_DIRECTORY =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function validateLocalDirectory(
   path: string,
 ): Promise<ValidateLocalDirectoryResult> {
@@ -60,6 +78,45 @@ export async function validateLocalDirectory(
     return { ok: false, reason: "not_writable" };
   }
   return { ok: true, is_git_repo: await isInsideGitWorkTree(path) };
+}
+
+/**
+ * A workspaces root is daemon-owned storage, not a parent folder for existing
+ * projects. Accept a new empty directory or a directory whose marker and
+ * top-level layout prove that Multica already owns it.
+ */
+export async function validateWorkspacesRootDirectory(
+  path: string,
+): Promise<ValidateWorkspacesRootResult> {
+  const basic = await validateLocalDirectory(path);
+  if (!basic.ok) return basic;
+
+  try {
+    const entries = await readdir(path, { withFileTypes: true });
+    if (entries.length === 0) return { ok: true };
+
+    let marker: { managed_by?: unknown };
+    try {
+      marker = JSON.parse(
+        await readFile(join(path, WORKSPACES_ROOT_MARKER), "utf-8"),
+      ) as { managed_by?: unknown };
+    } catch {
+      return { ok: false, reason: "contains_unmanaged_content" };
+    }
+    if (marker.managed_by !== "multica-daemon-task") {
+      return { ok: false, reason: "contains_unmanaged_content" };
+    }
+
+    const hasUnmanagedEntry = entries.some((entry) => {
+      if (WORKSPACES_ROOT_INTERNAL_ENTRIES.has(entry.name)) return false;
+      return !entry.isDirectory() || !CANONICAL_UUID_DIRECTORY.test(entry.name);
+    });
+    return hasUnmanagedEntry
+      ? { ok: false, reason: "contains_unmanaged_content" }
+      : { ok: true };
+  } catch (err) {
+    return { ok: false, reason: "error", error: errorMessage(err) };
+  }
 }
 
 /**
@@ -124,5 +181,11 @@ export function setupLocalDirectory(
     "local-directory:validate",
     (_event, path: string): Promise<ValidateLocalDirectoryResult> =>
       validateLocalDirectory(path),
+  );
+
+  ipcMain.handle(
+    "local-directory:validate-workspaces-root",
+    (_event, path: string): Promise<ValidateWorkspacesRootResult> =>
+      validateWorkspacesRootDirectory(path),
   );
 }

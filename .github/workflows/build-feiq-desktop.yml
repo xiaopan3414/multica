@@ -6,7 +6,7 @@ on:
       artifact_label:
         description: Label used for the downloadable Actions artifact
         required: true
-        default: feiq-v0.4.34.3
+        default: feiq-v0.4.34.6
 
 permissions:
   contents: read
@@ -62,6 +62,12 @@ jobs:
           pnpm exec vitest run
           src/shared/runtime-config.test.ts
           src/main/runtime-config-loader.test.ts
+          src/main/local-directory.test.ts
+          src/renderer/src/components/daemon-settings-tab.test.tsx
+
+      - name: Test CLI workspace cleanup safety
+        working-directory: server
+        run: go test ./internal/daemon -run '^TestRunGC_SkipsOrdinaryProjectDirectories$' -count=1
 
       - name: Typecheck Desktop and shared packages
         run: pnpm typecheck

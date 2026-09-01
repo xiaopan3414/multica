@@ -137,13 +137,14 @@ export function DaemonSettingsTab() {
         }
         return;
       }
-      const validation = await window.desktopAPI.validateLocalDirectory(
-        picked.path,
-      );
+      const validation =
+        await window.desktopAPI.validateWorkspacesRootDirectory(picked.path);
       if (!validation.ok) {
         toast.error(
-          validation.error ??
-            t(($) => $.desktop.daemon.folder_validation_failed),
+          validation.reason === "contains_unmanaged_content"
+            ? t(($) => $.desktop.daemon.working_folder_must_be_dedicated)
+            : (validation.error ??
+                t(($) => $.desktop.daemon.folder_validation_failed)),
         );
         return;
       }

@@ -102,6 +102,21 @@ interface DesktopAPI {
      *  Drives the worktree execution-mode option in the resource UI. */
     is_git_repo?: boolean;
   }>;
+  /** Validate that a path is empty or an existing Multica-managed root. */
+  validateWorkspacesRootDirectory: (
+    path: string,
+  ) => Promise<{
+    ok: boolean;
+    reason?:
+      | "not_absolute"
+      | "not_found"
+      | "not_a_directory"
+      | "not_readable"
+      | "not_writable"
+      | "contains_unmanaged_content"
+      | "error";
+    error?: string;
+  }>;
   /** Listen for Cmd/Ctrl+W tab-close requests from the main process.
    *  Returns an unsubscribe function. */
   onCloseActiveTab: (callback: () => void) => () => void;

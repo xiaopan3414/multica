@@ -42,7 +42,10 @@ import {
   isDaemonExternallyManaged,
   normalizeHostOS,
 } from "./daemon-os";
-import { validateLocalDirectory } from "./local-directory";
+import {
+  validateLocalDirectory,
+  validateWorkspacesRootDirectory,
+} from "./local-directory";
 import {
   classifyAuthProbe,
   isAuthStatusError,
@@ -716,7 +719,21 @@ async function syncToken(
 async function loadPrefs(): Promise<DaemonPrefs> {
   try {
     const raw = await readFile(PREFS_PATH, "utf-8");
-    return normalizeDaemonPrefs(JSON.parse(raw));
+    const prefs = normalizeDaemonPrefs(JSON.parse(raw));
+    if (prefs.workspacesRoot) {
+      const validation = await validateWorkspacesRootDirectory(
+        prefs.workspacesRoot,
+      );
+      if (!validation.ok) {
+        const safePrefs = { ...prefs, workspacesRoot: "" };
+        console.error(
+          `[daemon] disabled unsafe workspaces root: ${prefs.workspacesRoot}`,
+        );
+        await savePrefs(safePrefs);
+        return safePrefs;
+      }
+    }
+    return prefs;
   } catch {
     return normalizeDaemonPrefs(null);
   }
@@ -737,7 +754,9 @@ function applyWindowsLaunchAtLogin(enabled: boolean): void {
 }
 
 function workspaceRootError(
-  result: Awaited<ReturnType<typeof validateLocalDirectory>>,
+  result:
+    | Awaited<ReturnType<typeof validateLocalDirectory>>
+    | Awaited<ReturnType<typeof validateWorkspacesRootDirectory>>,
 ): string {
   if (result.error) return result.error;
   switch (result.reason) {
@@ -751,6 +770,8 @@ function workspaceRootError(
       return "The selected task working folder is not readable.";
     case "not_writable":
       return "The selected task working folder is not writable.";
+    case "contains_unmanaged_content":
+      return "Choose an empty folder created for Multica. Existing project folders cannot be used as task storage.";
     default:
       return "The selected task working folder could not be validated.";
   }
@@ -774,7 +795,9 @@ async function updatePrefs(patch: Partial<DaemonPrefs>): Promise<DaemonPrefs> {
   }
 
   if (rootChanged && merged.workspacesRoot) {
-    const validation = await validateLocalDirectory(merged.workspacesRoot);
+    const validation = await validateWorkspacesRootDirectory(
+      merged.workspacesRoot,
+    );
     if (!validation.ok) throw new Error(workspaceRootError(validation));
   }
 

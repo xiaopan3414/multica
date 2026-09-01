@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   setPrefs: vi.fn(),
   pickDirectory: vi.fn(),
   validateLocalDirectory: vi.fn(),
+  validateWorkspacesRootDirectory: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -19,6 +20,7 @@ const translations = {
       toast_save_failed: "Failed to save local service settings",
       folder_picker_failed: "Could not open the folder picker",
       folder_validation_failed: "The selected folder must be readable and writable.",
+      working_folder_must_be_dedicated: "Choose a dedicated empty folder.",
       working_folder_updated: "Default task working folder updated",
       working_folder_restored: "Default task working folder restored",
       auth_expired_title: "Sign-in expired",
@@ -106,6 +108,7 @@ describe("DaemonSettingsTab", () => {
       }));
     mocks.pickDirectory.mockReset();
     mocks.validateLocalDirectory.mockReset();
+    mocks.validateWorkspacesRootDirectory.mockReset();
     mocks.toastSuccess.mockReset();
     mocks.toastError.mockReset();
 
@@ -115,6 +118,8 @@ describe("DaemonSettingsTab", () => {
         appInfo: { version: "1.2.3", os: "windows" },
         pickDirectory: mocks.pickDirectory,
         validateLocalDirectory: mocks.validateLocalDirectory,
+        validateWorkspacesRootDirectory:
+          mocks.validateWorkspacesRootDirectory,
         openExternal: vi.fn(),
       },
     });
@@ -150,7 +155,7 @@ describe("DaemonSettingsTab", () => {
   it("validates and saves a folder selected with the native picker", async () => {
     const selected = "D:\\Multica Workspaces";
     mocks.pickDirectory.mockResolvedValue({ ok: true, path: selected });
-    mocks.validateLocalDirectory.mockResolvedValue({ ok: true });
+    mocks.validateWorkspacesRootDirectory.mockResolvedValue({ ok: true });
     render(<DaemonSettingsTab />);
 
     const choose = await screen.findByRole("button", { name: "Choose folder" });
@@ -158,9 +163,32 @@ describe("DaemonSettingsTab", () => {
     fireEvent.click(choose);
 
     await waitFor(() => {
-      expect(mocks.validateLocalDirectory).toHaveBeenCalledWith(selected);
+      expect(mocks.validateWorkspacesRootDirectory).toHaveBeenCalledWith(
+        selected,
+      );
       expect(mocks.setPrefs).toHaveBeenCalledWith({ workspacesRoot: selected });
       expect(screen.getByText(selected)).toBeInTheDocument();
+    });
+  });
+
+  it("refuses to use a folder containing existing projects as task storage", async () => {
+    const selected = "D:\\Projects";
+    mocks.pickDirectory.mockResolvedValue({ ok: true, path: selected });
+    mocks.validateWorkspacesRootDirectory.mockResolvedValue({
+      ok: false,
+      reason: "contains_unmanaged_content",
+    });
+    render(<DaemonSettingsTab />);
+
+    const choose = await screen.findByRole("button", { name: "Choose folder" });
+    await waitFor(() => expect(choose).toBeEnabled());
+    fireEvent.click(choose);
+
+    await waitFor(() => {
+      expect(mocks.setPrefs).not.toHaveBeenCalled();
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        "Choose a dedicated empty folder.",
+      );
     });
   });
 });

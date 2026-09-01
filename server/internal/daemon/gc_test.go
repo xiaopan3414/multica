@@ -57,6 +57,32 @@ func createTaskDir(t *testing.T, root, wsID, dirName string, meta *execenv.GCMet
 	return taskDir
 }
 
+func TestRunGC_SkipsOrdinaryProjectDirectories(t *testing.T) {
+	t.Parallel()
+
+	d := newGCTestDaemon(t, http.NewServeMux())
+	d.cfg.GCOrphanTTL = 0
+	projectDir := filepath.Join(d.cfg.WorkspacesRoot, "existing-project")
+	sourceDir := filepath.Join(projectDir, "src")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(sourceDir, "main.go")
+	if err := os.WriteFile(filePath, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(sourceDir, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	d.runGC(t.Context())
+
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("ordinary project content must never be scanned by workspace GC: %v", err)
+	}
+}
+
 func TestShouldCleanTaskDir_DoneIssueOverTTL(t *testing.T) {
 	t.Parallel()
 	issueID := "11111111-1111-1111-1111-111111111111"
