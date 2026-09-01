@@ -49,7 +49,7 @@ function DesktopSettingsRoute() {
       extraAccountTabs={[
         {
           value: "daemon",
-          label: "Daemon",
+          label: t(($) => $.desktop.tabs.daemon),
           icon: Server,
           content: <DaemonSettingsTab />,
         },

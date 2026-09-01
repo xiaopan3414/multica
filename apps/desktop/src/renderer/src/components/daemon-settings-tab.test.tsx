@@ -10,6 +10,71 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
+const translations = {
+  desktop: {
+    daemon: {
+      title: "Local service",
+      description: "Local service preferences",
+      toast_saved: "Local service settings saved",
+      toast_save_failed: "Failed to save local service settings",
+      folder_picker_failed: "Could not open the folder picker",
+      folder_validation_failed: "The selected folder must be readable and writable.",
+      working_folder_updated: "Default task working folder updated",
+      working_folder_restored: "Default task working folder restored",
+      auth_expired_title: "Sign-in expired",
+      auth_expired_description: "Sign in again to restore the local service.",
+      sign_in_again: "Sign in again",
+      externally_managed_prefix: "Manage this service with",
+      externally_managed_suffix: ".",
+      windows_start_title: "Start Multica with Windows",
+      windows_start_description: "Open after signing in to Windows.",
+      auto_start_title: "Start local service automatically",
+      auto_start_description: "Start after Desktop opens.",
+      auto_stop_title: "Stop local service when exiting",
+      auto_stop_description: "Stop after Desktop closes.",
+      working_folder_title: "Default task working folder",
+      working_folder_description: "Stores task data.",
+      multica_default: "Multica default",
+      use_default: "Use default",
+      choosing_folder: "Choosing...",
+      choose_folder: "Choose folder",
+      cli_status_title: "CLI status",
+      cli_checking: "Checking...",
+      cli_installed: "multica CLI is installed and available in PATH.",
+      cli_missing: "multica CLI was not found.",
+      installation_guide: "Installation guide",
+      diagnostics_title: "Diagnostics",
+      diagnostics_description: "Connection details.",
+      default_profile: "default",
+      states: {
+        running: "Running",
+        stopped: "Stopped",
+        starting: "Starting...",
+        stopping: "Stopping...",
+        installing_cli: "Installing CLI...",
+        cli_not_found: "CLI not found",
+        auth_expired: "Sign-in expired",
+      },
+      diagnostics: {
+        state: "State",
+        uptime: "Uptime",
+        daemon_id: "Daemon ID",
+        profile: "Profile",
+        server_url: "Server URL",
+        device_name: "Device name",
+        workspaces: "Workspaces",
+      },
+    },
+  },
+};
+
+vi.mock("@multica/views/i18n", () => ({
+  useT: () => ({
+    t: (selector: (resources: typeof translations) => string) =>
+      selector(translations),
+  }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: mocks.toastSuccess,

@@ -10,12 +10,12 @@ import {
   SettingsSection,
   SettingsTab,
 } from "@multica/views/settings";
+import { useT } from "@multica/views/i18n";
 import { reauthenticateDaemon } from "../platform/daemon-reauth";
 import type { DaemonPrefs, DaemonStatus } from "../../../shared/daemon-types";
 import { DEFAULT_DAEMON_PREFS } from "../../../shared/daemon-preferences";
 import {
   DAEMON_STATE_COLORS,
-  DAEMON_STATE_LABELS,
   formatUptime,
 } from "../../../shared/daemon-types";
 
@@ -47,6 +47,7 @@ function DiagnosticsRow({
 }
 
 export function DaemonSettingsTab() {
+  const { t } = useT("settings");
   const [prefs, setPrefs] = useState<DaemonPrefs>(() => ({
     ...DEFAULT_DAEMON_PREFS,
   }));
@@ -89,7 +90,10 @@ export function DaemonSettingsTab() {
   }, []);
 
   const persistPrefs = useCallback(
-    async (update: Partial<DaemonPrefs>, successMessage = "Daemon settings saved") => {
+    async (
+      update: Partial<DaemonPrefs>,
+      successMessage = t(($) => $.desktop.daemon.toast_saved),
+    ) => {
       setSaving(true);
       try {
         const updated = await window.daemonAPI.setPrefs(update);
@@ -99,14 +103,16 @@ export function DaemonSettingsTab() {
       } catch (error) {
         void window.daemonAPI.getPrefs().then(setPrefs);
         toast.error(
-          error instanceof Error ? error.message : "Failed to save daemon settings",
+          error instanceof Error
+            ? error.message
+            : t(($) => $.desktop.daemon.toast_save_failed),
         );
         return false;
       } finally {
         setSaving(false);
       }
     },
-    [],
+    [t],
   );
 
   const updateBooleanPref = useCallback(
@@ -125,7 +131,9 @@ export function DaemonSettingsTab() {
       );
       if (!picked.ok || !picked.path) {
         if (picked.reason === "error") {
-          toast.error(picked.error ?? "Could not open the folder picker");
+          toast.error(
+            picked.error ?? t(($) => $.desktop.daemon.folder_picker_failed),
+          );
         }
         return;
       }
@@ -135,18 +143,18 @@ export function DaemonSettingsTab() {
       if (!validation.ok) {
         toast.error(
           validation.error ??
-            "The selected folder must be readable and writable.",
+            t(($) => $.desktop.daemon.folder_validation_failed),
         );
         return;
       }
       await persistPrefs(
         { workspacesRoot: picked.path },
-        "Task working folder updated",
+        t(($) => $.desktop.daemon.working_folder_updated),
       );
     } finally {
       setPickingFolder(false);
     }
-  }, [persistPrefs, prefs.workspacesRoot]);
+  }, [persistPrefs, prefs.workspacesRoot, t]);
 
   // The daemon runs somewhere the app can't drive (e.g. inside WSL2 behind a
   // Windows desktop): /health is reachable but the lifecycle CLI can't reach
@@ -155,11 +163,20 @@ export function DaemonSettingsTab() {
   const externallyManaged = status.externallyManaged === true;
   const daemonTransitioning =
     status.state === "starting" || status.state === "stopping";
+  const stateLabels: Record<DaemonStatus["state"], string> = {
+    running: t(($) => $.desktop.daemon.states.running),
+    stopped: t(($) => $.desktop.daemon.states.stopped),
+    starting: t(($) => $.desktop.daemon.states.starting),
+    stopping: t(($) => $.desktop.daemon.states.stopping),
+    installing_cli: t(($) => $.desktop.daemon.states.installing_cli),
+    cli_not_found: t(($) => $.desktop.daemon.states.cli_not_found),
+    auth_expired: t(($) => $.desktop.daemon.states.auth_expired),
+  };
 
   return (
     <SettingsTab
-      title="Daemon"
-      description="Configure how the local agent daemon behaves with the desktop app."
+      title={t(($) => $.desktop.daemon.title)}
+      description={t(($) => $.desktop.daemon.description)}
     >
 
       {status.state === "auth_expired" && (
@@ -167,11 +184,10 @@ export function DaemonSettingsTab() {
           <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div className="min-w-0 flex-1">
             <p className="text-body font-medium text-destructive">
-              Sign-in expired
+              {t(($) => $.desktop.daemon.auth_expired_title)}
             </p>
             <p className="mt-0.5 text-body text-muted-foreground">
-              The local daemon couldn&apos;t authenticate, so this device
-              can&apos;t take tasks. Sign in again to restore it.
+              {t(($) => $.desktop.daemon.auth_expired_description)}
             </p>
           </div>
           <Button
@@ -181,7 +197,7 @@ export function DaemonSettingsTab() {
             disabled={reauthLoading}
           >
             <LogIn className="size-3.5 mr-1.5" />
-            Sign in again
+            {t(($) => $.desktop.daemon.sign_in_again)}
           </Button>
         </div>
       )}
@@ -190,11 +206,10 @@ export function DaemonSettingsTab() {
         <div className="mt-4 flex items-start gap-3 rounded-lg border bg-muted/30 px-4 py-3">
           <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="min-w-0 text-body text-muted-foreground">
-            This device&apos;s daemon runs outside the app — for example inside
-            WSL2 — so the app can&apos;t start or stop it. Start or stop it from
-            that environment with{" "}
+            {t(($) => $.desktop.daemon.externally_managed_prefix)}{" "}
             <code className="font-mono text-caption">multica daemon start</code> /{" "}
-            <code className="font-mono text-caption">multica daemon stop</code>.
+            <code className="font-mono text-caption">multica daemon stop</code>
+            {t(($) => $.desktop.daemon.externally_managed_suffix)}
           </p>
         </div>
       )}
@@ -202,8 +217,8 @@ export function DaemonSettingsTab() {
       <SettingsCard>
         {window.desktopAPI.appInfo.os === "windows" && (
           <SettingsRow
-            label="Start Multica with Windows"
-            description="Open the Desktop app automatically after you sign in to Windows."
+            label={t(($) => $.desktop.daemon.windows_start_title)}
+            description={t(($) => $.desktop.daemon.windows_start_description)}
           >
             <Switch
               checked={prefs.launchAtLogin}
@@ -211,14 +226,14 @@ export function DaemonSettingsTab() {
                 updateBooleanPref("launchAtLogin", checked)
               }
               disabled={!prefsReady || saving}
-              aria-label="Start Multica with Windows"
+              aria-label={t(($) => $.desktop.daemon.windows_start_title)}
             />
           </SettingsRow>
         )}
 
         <SettingsRow
-          label="Auto-start on launch"
-          description="Automatically start the daemon when the app opens and you are logged in."
+          label={t(($) => $.desktop.daemon.auto_start_title)}
+          description={t(($) => $.desktop.daemon.auto_start_description)}
         >
           <Switch
             checked={prefs.autoStart}
@@ -226,13 +241,13 @@ export function DaemonSettingsTab() {
               updateBooleanPref("autoStart", checked)
             }
             disabled={!prefsReady || saving || externallyManaged}
-            aria-label="Auto-start daemon on launch"
+            aria-label={t(($) => $.desktop.daemon.auto_start_title)}
           />
         </SettingsRow>
 
         <SettingsRow
-          label="Auto-stop on quit"
-          description="Stop the daemon when the desktop app is closed. Disable this to keep the daemon running in the background."
+          label={t(($) => $.desktop.daemon.auto_stop_title)}
+          description={t(($) => $.desktop.daemon.auto_stop_description)}
         >
           <Switch
             checked={prefs.autoStop}
@@ -240,24 +255,27 @@ export function DaemonSettingsTab() {
               updateBooleanPref("autoStop", checked)
             }
             disabled={!prefsReady || saving || externallyManaged}
-            aria-label="Auto-stop daemon on quit"
+            aria-label={t(($) => $.desktop.daemon.auto_stop_title)}
           />
         </SettingsRow>
 
         <SettingsRow
-          label="Task working folder"
+          label={t(($) => $.desktop.daemon.working_folder_title)}
           align="start"
           description={
             <div className="min-w-0 space-y-1.5">
               <p>
-                Stores task workspaces and repository caches. Changing it
-                restarts an idle daemon; existing files are not moved.
+                {t(($) => $.desktop.daemon.working_folder_description)}
               </p>
               <code
                 className="block max-w-[360px] truncate font-mono text-caption text-foreground"
-                title={prefs.workspacesRoot || "Multica default"}
+                title={
+                  prefs.workspacesRoot ||
+                  t(($) => $.desktop.daemon.multica_default)
+                }
               >
-                {prefs.workspacesRoot || "Multica default"}
+                {prefs.workspacesRoot ||
+                  t(($) => $.desktop.daemon.multica_default)}
               </code>
             </div>
           }
@@ -270,7 +288,7 @@ export function DaemonSettingsTab() {
                 onClick={() =>
                   void persistPrefs(
                     { workspacesRoot: "" },
-                    "Default task working folder restored",
+                    t(($) => $.desktop.daemon.working_folder_restored),
                   )
                 }
                 disabled={
@@ -281,7 +299,7 @@ export function DaemonSettingsTab() {
                 }
               >
                 <RotateCcw className="size-3.5" />
-                Use default
+                {t(($) => $.desktop.daemon.use_default)}
               </Button>
             )}
             <Button
@@ -297,19 +315,21 @@ export function DaemonSettingsTab() {
               }
             >
               <FolderOpen className="size-3.5" />
-              {pickingFolder ? "Choosing..." : "Choose folder"}
+              {pickingFolder
+                ? t(($) => $.desktop.daemon.choosing_folder)
+                : t(($) => $.desktop.daemon.choose_folder)}
             </Button>
           </div>
         </SettingsRow>
 
         <SettingsRow
-          label="CLI Status"
+          label={t(($) => $.desktop.daemon.cli_status_title)}
           description={
             cliInstalled === null
-              ? "Checking…"
+              ? t(($) => $.desktop.daemon.cli_checking)
               : cliInstalled
-                ? "multica CLI is installed and available in PATH."
-                : "multica CLI not found. Install it to enable daemon management."
+                ? t(($) => $.desktop.daemon.cli_installed)
+                : t(($) => $.desktop.daemon.cli_missing)
           }
         >
           {cliInstalled === false && (
@@ -322,7 +342,7 @@ export function DaemonSettingsTab() {
                 )
               }
             >
-              Installation Guide
+              {t(($) => $.desktop.daemon.installation_guide)}
             </Button>
           )}
           {cliInstalled !== false && <span />}
@@ -333,13 +353,13 @@ export function DaemonSettingsTab() {
           on logs. These fields matter for support tickets and bug reports,
           not for everyday use. */}
       <SettingsSection
-        title="Diagnostics"
-        description="Identification and connection details. Useful when filing a bug report or investigating why a runtime isn't showing up."
+        title={t(($) => $.desktop.daemon.diagnostics_title)}
+        description={t(($) => $.desktop.daemon.diagnostics_description)}
       >
         <SettingsCard>
           <div className="px-4 py-2">
           <DiagnosticsRow
-            label="State"
+            label={t(($) => $.desktop.daemon.diagnostics.state)}
             value={
               <span className="inline-flex items-center gap-1.5">
                 <span
@@ -348,12 +368,12 @@ export function DaemonSettingsTab() {
                     DAEMON_STATE_COLORS[status.state],
                   )}
                 />
-                {DAEMON_STATE_LABELS[status.state]}
+                {stateLabels[status.state]}
               </span>
             }
           />
           <DiagnosticsRow
-            label="Uptime"
+            label={t(($) => $.desktop.daemon.diagnostics.uptime)}
             value={status.uptime ? formatUptime(status.uptime) : "—"}
           />
           <DiagnosticsRow
@@ -362,25 +382,27 @@ export function DaemonSettingsTab() {
             mono={!!status.pid}
           />
           <DiagnosticsRow
-            label="Daemon ID"
+            label={t(($) => $.desktop.daemon.diagnostics.daemon_id)}
             value={status.daemonId ?? "—"}
             mono={!!status.daemonId}
           />
           <DiagnosticsRow
-            label="Profile"
-            value={status.profile || "default"}
+            label={t(($) => $.desktop.daemon.diagnostics.profile)}
+            value={
+              status.profile || t(($) => $.desktop.daemon.default_profile)
+            }
           />
           <DiagnosticsRow
-            label="Server URL"
+            label={t(($) => $.desktop.daemon.diagnostics.server_url)}
             value={status.serverUrl ?? "—"}
             mono={!!status.serverUrl}
           />
           <DiagnosticsRow
-            label="Device name"
+            label={t(($) => $.desktop.daemon.diagnostics.device_name)}
             value={status.deviceName ?? "—"}
           />
           <DiagnosticsRow
-            label="Workspaces"
+            label={t(($) => $.desktop.daemon.diagnostics.workspaces)}
             value={
               typeof status.workspaceCount === "number"
                 ? status.workspaceCount
