@@ -49,5 +49,20 @@
     "row_inviter_fallback": "誰か",
     "row_invited_admin": "{{inviter}}さんがあなたをadminとして招待しました",
     "row_invited_member": "{{inviter}}さんがあなたをmemberとして招待しました"
+  },
+  "join_only": {
+    "waiting_title": "既存のワークスペースに参加",
+    "waiting_hint": "ワークスペース管理者に {{email}} を招待してもらい、もう一度確認してください。",
+    "current_account_fallback": "現在ログイン中の会社メール",
+    "refresh": "招待を確認",
+    "refreshing": "確認中...",
+    "load_error_title": "ワークスペースへのアクセスを確認できません",
+    "load_error_hint": "Multica サーバーへの接続を確認して、もう一度お試しください。",
+    "selection_required": "参加するワークスペースを選択",
+    "subtitle": "続行するには、ワークスペースへの招待を1件以上選択してください。",
+    "ready_title": "ワークスペースの準備ができました",
+    "ready_hint": "すでに {{workspace_name}} にアクセスできます。新しいワークスペースやエージェントを作成せずに続行します。",
+    "continue": "ワークスペースへ進む",
+    "continuing": "ワークスペースを開いています..."
   }
 }

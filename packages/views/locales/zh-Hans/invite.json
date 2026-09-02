@@ -49,5 +49,20 @@
     "row_inviter_fallback": "某人",
     "row_invited_admin": "{{inviter}} 邀请你以管理员身份加入",
     "row_invited_member": "{{inviter}} 邀请你以成员身份加入"
+  },
+  "join_only": {
+    "waiting_title": "加入已有工作区",
+    "waiting_hint": "请让工作区管理员邀请 {{email}}，收到邀请后再检查一次。",
+    "current_account_fallback": "当前登录的公司邮箱",
+    "refresh": "检查工作区邀请",
+    "refreshing": "检查中...",
+    "load_error_title": "无法检查工作区权限",
+    "load_error_hint": "请检查与 Multica 服务器的连接，然后重试。",
+    "selection_required": "请选择要加入的工作区",
+    "subtitle": "请至少选择一个工作区邀请后继续。",
+    "ready_title": "工作区已就绪",
+    "ready_hint": "你已经可以访问 {{workspace_name}}，无需创建新的工作区或智能体。",
+    "continue": "进入工作区",
+    "continuing": "正在进入工作区..."
   }
 }

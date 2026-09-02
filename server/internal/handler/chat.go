@@ -144,6 +144,12 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resolvedSessionID := uuidToString(session.ID)
+	h.publish(protocol.EventChatSessionCreated, workspaceID, "member", userID, protocol.ChatSessionCreatedPayload{
+		ChatSessionID: resolvedSessionID,
+		WorkspaceID:   workspaceID,
+	})
+
 	writeJSON(w, http.StatusCreated, chatSessionToResponse(session))
 }
 

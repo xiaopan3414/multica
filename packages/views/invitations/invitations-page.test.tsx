@@ -65,11 +65,16 @@ import { InvitationsPage } from "./invitations-page";
 
 const TEST_RESOURCES = { en: { common: enCommon, invite: enInvite } };
 
-function renderWithClient(client: QueryClient = new QueryClient()) {
+function renderWithClient(
+  client: QueryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  }),
+  joinOnly = false,
+) {
   return render(
     <I18nProvider locale="en" resources={TEST_RESOURCES}>
       <QueryClientProvider client={client}>
-        <InvitationsPage />
+        <InvitationsPage joinOnly={joinOnly} />
       </QueryClientProvider>
     </I18nProvider>,
   );
@@ -177,5 +182,59 @@ describe("InvitationsPage", () => {
       screen.getByRole("button", { name: /continue to setup/i }),
     );
     expect(navigate).toHaveBeenCalledWith("/onboarding");
+  });
+
+  it("join-only mode waits for an invitation instead of offering setup", async () => {
+    listMyInvitations.mockResolvedValue([]);
+    listWorkspaces.mockResolvedValue([]);
+    renderWithClient(undefined, true);
+
+    expect(
+      await screen.findByRole("heading", { name: /join an existing workspace/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /check for invitations/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
+    expect(screen.queryByText(/set up my own workspace/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/continue to setup/i)).not.toBeInTheDocument();
+  });
+
+  it("join-only mode requires selecting a pending invitation", async () => {
+    listMyInvitations.mockResolvedValue([mkInvite("inv-1", "ws-1", "Acme")]);
+    listWorkspaces.mockResolvedValue([]);
+    renderWithClient(undefined, true);
+
+    await screen.findByText("Acme");
+    const submit = screen.getByRole("button", {
+      name: /select a workspace to join/i,
+    });
+    expect(submit).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /skip/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Acme"));
+    expect(
+      screen.getByRole("button", { name: /join 1 workspace/i }),
+    ).toBeEnabled();
+  });
+
+  it("join-only mode enters an existing membership without creating resources", async () => {
+    listMyInvitations.mockResolvedValue([]);
+    listWorkspaces.mockResolvedValue([mkWs("ws-1", "acme")]);
+    renderWithClient(undefined, true);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /continue to workspace/i }),
+    );
+
+    await waitFor(() => {
+      expect(markOnboardingComplete).toHaveBeenCalledWith({
+        completion_path: "skip_existing",
+        workspace_id: "ws-1",
+      });
+      expect(refreshMe).toHaveBeenCalled();
+      expect(navigate).toHaveBeenCalledWith("/acme/issues");
+    });
+    expect(acceptInvitation).not.toHaveBeenCalled();
   });
 });

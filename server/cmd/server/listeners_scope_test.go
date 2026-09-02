@@ -98,3 +98,30 @@ func TestRegisterListeners_TaskChatGoToWorkspace(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisterListeners_ChatSessionCreatedGoesOnlyToCreator(t *testing.T) {
+	bus := events.New()
+	fb := &fakeBroadcaster{}
+	registerListeners(bus, fb)
+
+	bus.Publish(events.Event{
+		Type:        protocol.EventChatSessionCreated,
+		WorkspaceID: "ws-1",
+		ActorType:   "member",
+		ActorID:     "creator-1",
+		Payload: protocol.ChatSessionCreatedPayload{
+			ChatSessionID: "chat-1",
+			WorkspaceID:   "ws-1",
+		},
+	})
+
+	if len(fb.userCalls) != 1 || fb.userCalls[0].userID != "creator-1" {
+		t.Fatalf("expected one creator-only SendToUser call, got %+v", fb.userCalls)
+	}
+	if len(fb.workspaceCalls) != 0 {
+		t.Fatalf("private chat creation must not use workspace fanout, got %+v", fb.workspaceCalls)
+	}
+	if len(fb.scopeCalls) != 0 || fb.broadcastCalled != 0 {
+		t.Fatalf("unexpected non-user fanout: scopes=%+v broadcast=%d", fb.scopeCalls, fb.broadcastCalled)
+	}
+}

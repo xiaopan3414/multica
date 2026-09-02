@@ -6,7 +6,7 @@ on:
       image_tag:
         description: Local Docker image tag
         required: true
-        default: feiq-v0.4.34.2
+        default: feiq-v0.4.34.3
 
 permissions:
   contents: read
@@ -63,11 +63,12 @@ jobs:
         working-directory: server
         run: |
           go test ./internal/service -run '^TestSendVerificationCodeDevLogIncludesClientIP$' -count=1
-          go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings|TestSendCodeResendCooldownCanBeDisabled|TestVerificationCodeLoginDomainAppliesToExistingUsers|TestAgentWorkingDirectoryAPI.*|TestClaimTaskByRuntimeCarriesSynchronizedAgentWorkingDirectory)$' -count=1
+          go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings|TestSendCodeResendCooldownCanBeDisabled|TestVerificationCodeLoginDomainAppliesToExistingUsers|TestAgentWorkingDirectoryAPI.*|TestClaimTaskByRuntimeCarriesSynchronizedAgentWorkingDirectory|TestCreateChatSessionPublishesCreatedAfterCommit)$' -count=1
+          go test ./cmd/server -run '^TestRegisterListeners_ChatSessionCreatedGoesOnlyToCreator$' -count=1
 
       - name: Test core configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts platform/auth-initializer.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
 
       - name: Test shared views
         working-directory: packages/views
@@ -75,6 +76,7 @@ jobs:
           pnpm exec vitest run
           auth/login-page.test.tsx
           agents/components/agent-working-directory-settings.test.tsx
+          invitations/invitations-page.test.tsx
           layout/app-sidebar.test.tsx
           settings/components/repositories-tab.test.tsx
           settings/components/settings-page.test.tsx

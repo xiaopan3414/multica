@@ -295,6 +295,14 @@ type ChatSessionReadPayload struct {
 	ChatSessionID string `json:"chat_session_id"`
 }
 
+// ChatSessionCreatedPayload tells the creator's other devices to refresh the
+// authoritative session list. WorkspaceID prevents a personal connection that
+// is currently viewing another workspace from invalidating the wrong cache.
+type ChatSessionCreatedPayload struct {
+	ChatSessionID string `json:"chat_session_id"`
+	WorkspaceID   string `json:"workspace_id"`
+}
+
 // ChatSessionDeletedPayload is broadcast when a chat session is hard-deleted
 // so other tabs/devices drop it from their session lists and reset the active
 // pointer if it referenced the deleted session.

@@ -50,5 +50,20 @@
     "row_inviter_fallback": "Someone",
     "row_invited_admin": "{{inviter}} invited you as an admin",
     "row_invited_member": "{{inviter}} invited you as a member"
+  },
+  "join_only": {
+    "waiting_title": "Join an existing workspace",
+    "waiting_hint": "Ask a workspace administrator to invite {{email}}, then check again.",
+    "current_account_fallback": "your signed-in company email",
+    "refresh": "Check for invitations",
+    "refreshing": "Checking...",
+    "load_error_title": "Couldn't check workspace access",
+    "load_error_hint": "Check your connection to the Multica server, then try again.",
+    "selection_required": "Select a workspace to join",
+    "subtitle": "Select at least one workspace invitation to continue.",
+    "ready_title": "Your workspace is ready",
+    "ready_hint": "You already have access to {{workspace_name}}. Continue without creating a new workspace or agent.",
+    "continue": "Continue to workspace",
+    "continuing": "Opening workspace..."
   }
 }

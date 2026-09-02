@@ -239,6 +239,35 @@ describe("useRealtimeSync — ws instance change", () => {
       queryKey: issueKeys.attachments("issue-1"),
     });
   });
+
+  it("refreshes the session list when this user's other device creates a chat", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const created = vi
+      .mocked(ws.on)
+      .mock.calls.find(([event]) => event === "chat:session_created")?.[1];
+    expect(created).toBeDefined();
+
+    invalidateSpy.mockClear();
+    (created as (payload: unknown) => void)({
+      chat_session_id: "session-from-other-device",
+      workspace_id: "ws-1",
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.sessions("ws-1"),
+    });
+
+    invalidateSpy.mockClear();
+    (created as (payload: unknown) => void)({
+      chat_session_id: "session-in-another-workspace",
+      workspace_id: "ws-2",
+    });
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
   it("refetches the status catalog after an admin changes it elsewhere", async () => {
     const ws = createMockWs();
     renderHook(() => useRealtimeSync(ws, stores), {

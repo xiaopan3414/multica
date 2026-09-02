@@ -116,6 +116,7 @@ import type {
   ChatPendingTask,
   ChatMessagesPage,
   ChatSession,
+  ChatSessionCreatedPayload,
   InvitationCreatedPayload,
 } from "../types";
 
@@ -963,7 +964,7 @@ export function useRealtimeSync(
       "subscriber:added", "subscriber:removed",
       "daemon:heartbeat",
       // Chat events are handled explicitly below; do not double-invalidate.
-      "chat:message", "chat:done", "chat:quick_actions", "chat:cancel_finalized", "chat:session_read",
+      "chat:message", "chat:done", "chat:quick_actions", "chat:cancel_finalized", "chat:session_created", "chat:session_read",
       "chat:session_deleted", "chat:session_updated",
       // task:message stays out of the prefix path because it fires per
       // streamed message during a long run — invalidating the snapshot on
@@ -1644,6 +1645,14 @@ export function useRealtimeSync(
       invalidateSessionLists();
     });
 
+    const unsubChatSessionCreated = ws.on("chat:session_created", (p) => {
+      const payload = p as ChatSessionCreatedPayload;
+      chatWsLogger.info("chat:session_created (personal)", payload);
+      const id = getCurrentWsId();
+      if (!id || payload.workspace_id !== id) return;
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(id) });
+    });
+
     // chat:session_updated fires after the creator renames, pins, or archives
     // a session in any tab/device. Patch the cached row inline so the dropdown
     // and badges reflect the change without a full sessions-list refetch — see
@@ -1723,6 +1732,7 @@ export function useRealtimeSync(
       unsubTaskCancelled();
       unsubTaskCompleted();
       unsubTaskFailed();
+      unsubChatSessionCreated();
       unsubChatSessionRead();
       unsubChatSessionDeleted();
       unsubChatSessionUpdated();

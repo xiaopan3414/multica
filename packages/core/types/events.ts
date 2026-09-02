@@ -60,6 +60,7 @@ export type WSEventType =
   | "chat:done"
   | "chat:quick_actions"
   | "chat:cancel_finalized"
+  | "chat:session_created"
   | "chat:session_read"
   | "chat:session_deleted"
   | "chat:session_updated"
@@ -486,6 +487,11 @@ export interface ChatSessionReadPayload {
   chat_session_id: string;
 }
 
+export interface ChatSessionCreatedPayload {
+  chat_session_id: string;
+  workspace_id: string;
+}
+
 export interface ChatSessionDeletedPayload {
   chat_session_id: string;
 }
@@ -586,6 +592,7 @@ export interface WSEventPayloadMap {
   "chat:done": ChatDonePayload;
   "chat:quick_actions": ChatQuickActionsPayload;
   "chat:cancel_finalized": ChatCancelFinalizedPayload;
+  "chat:session_created": ChatSessionCreatedPayload;
   "chat:session_read": ChatSessionReadPayload;
   "chat:session_deleted": ChatSessionDeletedPayload;
   "chat:session_updated": unknown;

@@ -87,6 +87,7 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		protocol.EventInboxBatchArchived: true,
 		protocol.EventInvitationCreated:  true,
 		protocol.EventInvitationRevoked:  true,
+		protocol.EventChatSessionCreated: true,
 	}
 
 	// Helper: marshal event and send to a specific user.
@@ -173,6 +174,13 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		if uid != nil && *uid != "" {
 			sendToRecipient(b, e, *uid)
 		}
+	})
+
+	// A chat session is private to its creator. ActorID is deliberately the
+	// authenticated creator for this event, so their other devices learn about
+	// the new row without exposing its id to other workspace members.
+	bus.Subscribe(protocol.EventChatSessionCreated, func(e events.Event) {
+		sendToRecipient(b, e, e.ActorID)
 	})
 
 	// member:added — also send to the invited user so they discover the new workspace.

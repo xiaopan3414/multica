@@ -85,29 +85,9 @@ function WindowOverlayInner() {
           onBack={onBack}
         />
       )}
-      {overlay.type === "invitations" && <InvitationsPage />}
+      {overlay.type === "invitations" && <InvitationsPage joinOnly />}
       {overlay.type === "onboarding" && (
-        <OnboardingFlow
-          onComplete={(ws, destination) => {
-            close();
-            if (ws && destination?.kind === "chat") {
-              push(
-                paths.workspace(ws.slug).chatSession(destination.sessionId),
-              );
-            } else if (ws && destination?.kind === "issue") {
-              push(
-                paths.workspace(ws.slug).issueDetail(destination.issueId),
-              );
-            } else if (ws) {
-              push(paths.workspace(ws.slug).issues());
-            } else {
-              push(paths.root());
-            }
-          }}
-          // Restart the bundled daemon when the user hits Refresh on
-          onRuntimeRefresh={restartDaemon}
-          runtimesPending={runtimesPending}
-        />
+        <InvitationsPage joinOnly />
       )}
     </div>
   );

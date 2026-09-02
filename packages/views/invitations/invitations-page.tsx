@@ -19,7 +19,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Card, CardContent } from "@multica/ui/components/ui/card";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
-import { LogOut, Mail, Users } from "lucide-react";
+import { LogOut, Mail, RefreshCw, Users } from "lucide-react";
 
 /**
  * Batch invitation handling page for first-contact users who land here
@@ -39,10 +39,11 @@ import { LogOut, Mail, Users } from "lucide-react";
  *    here because closing/refreshing this page should not be a destructive
  *    action.
  */
-export function InvitationsPage() {
+export function InvitationsPage({ joinOnly = false }: { joinOnly?: boolean }) {
   const { t } = useT("invite");
   const { push } = useNavigation();
   const qc = useQueryClient();
+  const userEmail = useAuthStore((state) => state.user?.email);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +51,22 @@ export function InvitationsPage() {
   const {
     data: invitations,
     isLoading,
+    isFetching: invitationsFetching,
     error: fetchError,
     refetch,
   } = useQuery(myInvitationListOptions());
+  const {
+    data: workspaces,
+    isLoading: workspacesLoading,
+    isFetching: workspacesFetching,
+    error: workspacesFetchError,
+    refetch: refetchWorkspaces,
+  } = useQuery({
+    ...workspaceListOptions(),
+    enabled: joinOnly,
+  });
+
+  const existingWorkspace = joinOnly ? workspaces?.[0] : undefined;
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -69,6 +83,7 @@ export function InvitationsPage() {
     // Zero selected: hand off to onboarding. Pending invites stay pending and
     // can be picked up later from the sidebar.
     if (selected.size === 0) {
+      if (joinOnly) return;
       push(paths.onboarding());
       return;
     }
@@ -137,7 +152,35 @@ export function InvitationsPage() {
     }
   };
 
-  if (isLoading) {
+  const handleContinueExisting = async () => {
+    if (!existingWorkspace) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await api.markOnboardingComplete({
+        completion_path: "skip_existing",
+        workspace_id: existingWorkspace.id,
+      });
+      await useAuthStore.getState().refreshMe();
+      push(paths.workspace(existingWorkspace.slug).issues());
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : t(($) => $.batch.error_generic),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setError(null);
+    void Promise.all([
+      refetch(),
+      ...(joinOnly ? [refetchWorkspaces()] : []),
+    ]);
+  };
+
+  if ((isLoading || (joinOnly && workspacesLoading)) && !existingWorkspace) {
     return (
       <InvitationsShell>
         <Card className="w-full max-w-lg">
@@ -152,10 +195,72 @@ export function InvitationsPage() {
     );
   }
 
+  if (existingWorkspace) {
+    return (
+      <InvitationsShell>
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Users className="h-6 w-6 text-primary" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-title font-semibold">
+                {t(($) => $.join_only.ready_title)}
+              </h2>
+              <p className="text-body text-muted-foreground">
+                {t(($) => $.join_only.ready_hint, {
+                  workspace_name: existingWorkspace.name,
+                })}
+              </p>
+            </div>
+            <Button
+              className="w-full"
+              onClick={handleContinueExisting}
+              disabled={submitting}
+            >
+              {submitting
+                ? t(($) => $.join_only.continuing)
+                : t(($) => $.join_only.continue)}
+            </Button>
+            {error && <p className="text-body text-destructive">{error}</p>}
+          </CardContent>
+        </Card>
+      </InvitationsShell>
+    );
+  }
+
+  if (joinOnly && (fetchError || workspacesFetchError)) {
+    return (
+      <InvitationsShell>
+        <JoinOnlyEmptyState
+          title={t(($) => $.join_only.load_error_title)}
+          hint={t(($) => $.join_only.load_error_hint)}
+          refreshing={invitationsFetching || workspacesFetching}
+          onRefresh={handleRefresh}
+        />
+      </InvitationsShell>
+    );
+  }
+
   // Empty / error: send the user on to onboarding so they're never stuck.
   // Genuine fetch failure is rare; treating it as "no invites" is safer than
   // trapping the user on an error screen they can't act on.
   if (fetchError || !invitations || invitations.length === 0) {
+    if (joinOnly) {
+      return (
+        <InvitationsShell>
+          <JoinOnlyEmptyState
+            title={t(($) => $.join_only.waiting_title)}
+            hint={t(($) => $.join_only.waiting_hint, {
+              email:
+                userEmail ?? t(($) => $.join_only.current_account_fallback),
+            })}
+            refreshing={invitationsFetching || workspacesFetching}
+            onRefresh={handleRefresh}
+          />
+        </InvitationsShell>
+      );
+    }
     return (
       <InvitationsShell>
         <Card className="w-full max-w-md">
@@ -181,7 +286,9 @@ export function InvitationsPage() {
 
   const submitLabel =
     selected.size === 0
-      ? t(($) => $.batch.submit_skip)
+      ? joinOnly
+        ? t(($) => $.join_only.selection_required)
+        : t(($) => $.batch.submit_skip)
       : t(($) => $.batch.submit_join, { count: selected.size });
 
   return (
@@ -197,7 +304,9 @@ export function InvitationsPage() {
                 {t(($) => $.batch.title)}
               </h2>
               <p className="text-body text-muted-foreground">
-                {t(($) => $.batch.subtitle)}
+                {joinOnly
+                  ? t(($) => $.join_only.subtitle)
+                  : t(($) => $.batch.subtitle)}
               </p>
             </div>
           </div>
@@ -216,7 +325,7 @@ export function InvitationsPage() {
           <Button
             className="w-full"
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || (joinOnly && selected.size === 0)}
           >
             {submitting ? t(($) => $.batch.joining) : submitLabel}
           </Button>
@@ -227,6 +336,39 @@ export function InvitationsPage() {
         </CardContent>
       </Card>
     </InvitationsShell>
+  );
+}
+
+function JoinOnlyEmptyState({
+  title,
+  hint,
+  refreshing,
+  onRefresh,
+}: {
+  title: string;
+  hint: string;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const { t } = useT("invite");
+  return (
+    <Card className="w-full max-w-md">
+      <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+          <Mail className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-title font-semibold">{title}</h2>
+          <p className="text-body text-muted-foreground">{hint}</p>
+        </div>
+        <Button onClick={onRefresh} disabled={refreshing}>
+          <RefreshCw className={refreshing ? "animate-spin" : undefined} />
+          {refreshing
+            ? t(($) => $.join_only.refreshing)
+            : t(($) => $.join_only.refresh)}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
