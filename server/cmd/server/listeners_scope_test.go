@@ -99,7 +99,50 @@ func TestRegisterListeners_TaskChatGoToWorkspace(t *testing.T) {
 	}
 }
 
-func TestRegisterListeners_ChatSessionCreatedGoesOnlyToCreator(t *testing.T) {
+func TestRegisterListeners_ChatSessionCreatedGoesOnlyToParticipants(t *testing.T) {
+	bus := events.New()
+	fb := &fakeBroadcaster{}
+	registerListeners(bus, fb)
+
+	bus.Publish(events.Event{
+		Type:        protocol.EventChatSessionCreated,
+		WorkspaceID: "ws-1",
+		ActorType:   "member",
+		ActorID:     "creator-1",
+		Payload: protocol.ChatSessionCreatedPayload{
+			ChatSessionID:    "chat-1",
+			WorkspaceID:      "ws-1",
+			RecipientUserIDs: []string{"creator-1", "owner-1", "creator-1"},
+		},
+	})
+
+	if len(fb.userCalls) != 2 || fb.userCalls[0].userID != "creator-1" || fb.userCalls[1].userID != "owner-1" {
+		t.Fatalf("expected one SendToUser call for each participant, got %+v", fb.userCalls)
+	}
+	for _, call := range fb.userCalls {
+		if string(call.msg) == "" || containsJSONKey(call.msg, "RecipientUserIDs") || containsJSONKey(call.msg, "recipient_user_ids") {
+			t.Fatalf("server-only recipient ids leaked to client payload: %s", call.msg)
+		}
+	}
+	if len(fb.workspaceCalls) != 0 {
+		t.Fatalf("private chat creation must not use workspace fanout, got %+v", fb.workspaceCalls)
+	}
+	if len(fb.scopeCalls) != 0 || fb.broadcastCalled != 0 {
+		t.Fatalf("unexpected non-user fanout: scopes=%+v broadcast=%d", fb.scopeCalls, fb.broadcastCalled)
+	}
+}
+
+func containsJSONKey(message []byte, key string) bool {
+	var decoded map[string]any
+	if err := json.Unmarshal(message, &decoded); err != nil {
+		return false
+	}
+	payload, _ := decoded["payload"].(map[string]any)
+	_, ok := payload[key]
+	return ok
+}
+
+func TestRegisterListeners_ChatSessionCreatedFallsBackToActor(t *testing.T) {
 	bus := events.New()
 	fb := &fakeBroadcaster{}
 	registerListeners(bus, fb)
@@ -116,12 +159,6 @@ func TestRegisterListeners_ChatSessionCreatedGoesOnlyToCreator(t *testing.T) {
 	})
 
 	if len(fb.userCalls) != 1 || fb.userCalls[0].userID != "creator-1" {
-		t.Fatalf("expected one creator-only SendToUser call, got %+v", fb.userCalls)
-	}
-	if len(fb.workspaceCalls) != 0 {
-		t.Fatalf("private chat creation must not use workspace fanout, got %+v", fb.workspaceCalls)
-	}
-	if len(fb.scopeCalls) != 0 || fb.broadcastCalled != 0 {
-		t.Fatalf("unexpected non-user fanout: scopes=%+v broadcast=%d", fb.scopeCalls, fb.broadcastCalled)
+		t.Fatalf("expected compatibility fallback to actor, got %+v", fb.userCalls)
 	}
 }

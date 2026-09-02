@@ -6,7 +6,7 @@ on:
       artifact_label:
         description: Label used for the downloadable Actions artifact
         required: true
-        default: feiq-v0.4.34.8
+        default: feiq-v0.4.34.9
 
 permissions:
   contents: read
@@ -65,6 +65,7 @@ jobs:
           src/shared/runtime-config.test.ts
           src/main/runtime-config-loader.test.ts
           src/main/local-directory.test.ts
+          src/renderer/src/pages/login.test.tsx
           src/renderer/src/components/private-agent-working-directory.test.tsx
           src/renderer/src/components/daemon-settings-tab.test.tsx
 

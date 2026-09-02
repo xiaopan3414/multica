@@ -10,6 +10,7 @@ const {
   logout,
   refreshMe,
   acceptInvitation,
+  joinByShareLink,
   markOnboardingComplete,
   listMyInvitations,
   listWorkspaces,
@@ -18,6 +19,7 @@ const {
   logout: vi.fn(),
   refreshMe: vi.fn(),
   acceptInvitation: vi.fn(),
+  joinByShareLink: vi.fn(),
   markOnboardingComplete: vi.fn(),
   listMyInvitations: vi.fn(),
   listWorkspaces: vi.fn(),
@@ -52,6 +54,7 @@ vi.mock("@multica/core/auth", () => ({
 vi.mock("@multica/core/api", () => ({
   api: {
     acceptInvitation,
+    joinByShareLink,
     markOnboardingComplete,
     listMyInvitations,
     listWorkspaces,
@@ -61,7 +64,7 @@ vi.mock("@multica/core/api", () => ({
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../locales/en/common.json";
 import enInvite from "../locales/en/invite.json";
-import { InvitationsPage } from "./invitations-page";
+import { extractShareLinkCode, InvitationsPage } from "./invitations-page";
 
 const TEST_RESOURCES = { en: { common: enCommon, invite: enInvite } };
 
@@ -115,11 +118,13 @@ describe("InvitationsPage", () => {
     logout.mockReset();
     refreshMe.mockReset();
     acceptInvitation.mockReset();
+    joinByShareLink.mockReset();
     markOnboardingComplete.mockReset();
     listMyInvitations.mockReset();
     listWorkspaces.mockReset();
     refreshMe.mockResolvedValue(undefined);
     acceptInvitation.mockResolvedValue({});
+    joinByShareLink.mockResolvedValue({});
     markOnboardingComplete.mockResolvedValue({});
   });
 
@@ -195,9 +200,47 @@ describe("InvitationsPage", () => {
     expect(
       screen.getByRole("button", { name: /check for invitations/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/invitation link or code/i),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
     expect(screen.queryByText(/set up my own workspace/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/continue to setup/i)).not.toBeInTheDocument();
+  });
+
+  it("join-only mode accepts a pasted share link and opens that workspace", async () => {
+    const joinedWorkspace = mkWs("ws-link", "linked-team");
+    listMyInvitations.mockResolvedValue([]);
+    listWorkspaces
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([joinedWorkspace]);
+    joinByShareLink.mockResolvedValue({
+      member: {},
+      workspace_id: "ws-link",
+      workspace_slug: "linked-team",
+    });
+    renderWithClient(undefined, true);
+
+    const input = await screen.findByLabelText(/invitation link or code/i);
+    fireEvent.change(input, {
+      target: {
+        value:
+          "http://10.0.37.30:3000/join?code=0123456789abcdef01234567",
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /join workspace with link/i }),
+    );
+
+    await waitFor(() => {
+      expect(joinByShareLink).toHaveBeenCalledWith("0123456789abcdef01234567");
+      expect(markOnboardingComplete).toHaveBeenCalledWith({
+        completion_path: "invite_accept",
+        workspace_id: "ws-link",
+      });
+      expect(refreshMe).toHaveBeenCalled();
+      expect(navigate).toHaveBeenCalledWith("/linked-team/issues");
+    });
   });
 
   it("join-only mode requires selecting a pending invitation", async () => {
@@ -236,5 +279,23 @@ describe("InvitationsPage", () => {
       expect(navigate).toHaveBeenCalledWith("/acme/issues");
     });
     expect(acceptInvitation).not.toHaveBeenCalled();
+  });
+});
+
+describe("extractShareLinkCode", () => {
+  it.each([
+    ["0123456789abcdef01234567", "0123456789abcdef01234567"],
+    [
+      "/join?code=0123456789abcdef01234567",
+      "0123456789abcdef01234567",
+    ],
+    [
+      "http://10.0.37.30:3000/join?code=0123456789abcdef01234567",
+      "0123456789abcdef01234567",
+    ],
+    ["not a link", null],
+    ["", null],
+  ])("extracts a share code from %j", (input, expected) => {
+    expect(extractShareLinkCode(input)).toBe(expected);
   });
 });

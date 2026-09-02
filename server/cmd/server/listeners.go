@@ -176,11 +176,26 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		}
 	})
 
-	// A chat session is private to its creator. ActorID is deliberately the
-	// authenticated creator for this event, so their other devices learn about
-	// the new row without exposing its id to other workspace members.
+	// A chat session is visible only to its creator and target agent owner. The
+	// payload carries server-only recipient ids so both users' devices refresh
+	// without exposing the session to the rest of the workspace. ActorID remains
+	// the compatibility fallback for events produced by older code paths.
 	bus.Subscribe(protocol.EventChatSessionCreated, func(e events.Event) {
-		sendToRecipient(b, e, e.ActorID)
+		recipientIDs := []string{e.ActorID}
+		if payload, ok := e.Payload.(protocol.ChatSessionCreatedPayload); ok && len(payload.RecipientUserIDs) > 0 {
+			recipientIDs = payload.RecipientUserIDs
+		}
+		seen := make(map[string]struct{}, len(recipientIDs))
+		for _, recipientID := range recipientIDs {
+			if recipientID == "" {
+				continue
+			}
+			if _, duplicate := seen[recipientID]; duplicate {
+				continue
+			}
+			seen[recipientID] = struct{}{}
+			sendToRecipient(b, e, recipientID)
+		}
 	})
 
 	// member:added — also send to the invited user so they discover the new workspace.

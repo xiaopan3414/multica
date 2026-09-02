@@ -14,9 +14,17 @@ import (
 
 // fakeScopeQuerier implements scopeAuthQuerier with in-memory maps.
 type fakeScopeQuerier struct {
+	agents   map[[16]byte]db.Agent
 	tasks    map[[16]byte]db.AgentTaskQueue
 	issues   map[[16]byte]db.Issue
 	sessions map[[16]byte]db.ChatSession
+}
+
+func (f *fakeScopeQuerier) GetAgent(_ context.Context, id pgtype.UUID) (db.Agent, error) {
+	if a, ok := f.agents[id.Bytes]; ok {
+		return a, nil
+	}
+	return db.Agent{}, pgx.ErrNoRows
 }
 
 func (f *fakeScopeQuerier) GetAgentTask(_ context.Context, id pgtype.UUID) (db.AgentTaskQueue, error) {
@@ -47,24 +55,33 @@ func mustUUID(t *testing.T) (string, pgtype.UUID) {
 	return u.String(), pgtype.UUID{Bytes: u, Valid: true}
 }
 
-// TestScopeAuthorizer_ChatRequiresCreator pins must-fix #2 from PR #1429:
-// ScopeChat MUST verify CreatorID == userID. A workspace peer that knows the
-// session_id must NOT be able to subscribe to chat:message / chat:done /
-// chat:session_read for that private session.
-func TestScopeAuthorizer_ChatRequiresCreator(t *testing.T) {
+// TestScopeAuthorizer_ChatRequiresParticipant keeps chat scopes limited to the
+// session creator and target agent owner. An unrelated workspace peer that
+// knows the session id must still be denied.
+func TestScopeAuthorizer_ChatRequiresParticipant(t *testing.T) {
 	wsStr, wsUUID := mustUUID(t)
 	creatorStr, creatorUUID := mustUUID(t)
-	otherStr, _ := mustUUID(t)
+	ownerStr, ownerUUID := mustUUID(t)
+	peerStr, _ := mustUUID(t)
 	sessStr, sessUUID := mustUUID(t)
+	_, agentUUID := mustUUID(t)
 	otherWsStr, _ := mustUUID(t)
 	otherWsStrOnly, otherWsUUID := mustUUID(t)
 	_ = otherWsStrOnly
 
 	q := &fakeScopeQuerier{
+		agents: map[[16]byte]db.Agent{
+			agentUUID.Bytes: {
+				ID:          agentUUID,
+				WorkspaceID: wsUUID,
+				OwnerID:     ownerUUID,
+			},
+		},
 		sessions: map[[16]byte]db.ChatSession{
 			sessUUID.Bytes: {
 				ID:          sessUUID,
 				WorkspaceID: wsUUID,
+				AgentID:     agentUUID,
 				CreatorID:   creatorUUID,
 			},
 		},
@@ -78,8 +95,14 @@ func TestScopeAuthorizer_ChatRequiresCreator(t *testing.T) {
 		t.Fatalf("creator should be allowed: ok=%v err=%v", ok, err)
 	}
 
-	// Same workspace, different (peer) member → must be denied.
-	ok, err = a.AuthorizeScope(ctx, otherStr, wsStr, realtime.ScopeChat, sessStr)
+	// The owner of the target agent is the conversation's second participant.
+	ok, err = a.AuthorizeScope(ctx, ownerStr, wsStr, realtime.ScopeChat, sessStr)
+	if err != nil || !ok {
+		t.Fatalf("agent owner should be allowed: ok=%v err=%v", ok, err)
+	}
+
+	// Same workspace, unrelated peer member → must be denied.
+	ok, err = a.AuthorizeScope(ctx, peerStr, wsStr, realtime.ScopeChat, sessStr)
 	if err != nil || ok {
 		t.Fatalf("peer must be denied: ok=%v err=%v", ok, err)
 	}
@@ -108,19 +131,26 @@ func TestScopeAuthorizer_ChatRequiresCreator(t *testing.T) {
 	}
 }
 
-// TestScopeAuthorizer_ChatTaskRequiresCreator pins must-fix #2 for the
-// task-scope path of chat tasks (task.ChatSessionID set, no IssueID): only
-// the chat session creator may subscribe to that task's stream, since
-// task:message for chat tasks contains assistant chat content.
-func TestScopeAuthorizer_ChatTaskRequiresCreator(t *testing.T) {
+// TestScopeAuthorizer_ChatTaskRequiresParticipant applies the same participant
+// boundary to task streams associated with a chat session.
+func TestScopeAuthorizer_ChatTaskRequiresParticipant(t *testing.T) {
 	wsStr, wsUUID := mustUUID(t)
 	creatorStr, creatorUUID := mustUUID(t)
-	otherStr, _ := mustUUID(t)
+	ownerStr, ownerUUID := mustUUID(t)
+	peerStr, _ := mustUUID(t)
 	sessStr, sessUUID := mustUUID(t)
 	taskStr, taskUUID := mustUUID(t)
+	_, agentUUID := mustUUID(t)
 	_ = sessStr
 
 	q := &fakeScopeQuerier{
+		agents: map[[16]byte]db.Agent{
+			agentUUID.Bytes: {
+				ID:          agentUUID,
+				WorkspaceID: wsUUID,
+				OwnerID:     ownerUUID,
+			},
+		},
 		tasks: map[[16]byte]db.AgentTaskQueue{
 			taskUUID.Bytes: {
 				ID:            taskUUID,
@@ -131,6 +161,7 @@ func TestScopeAuthorizer_ChatTaskRequiresCreator(t *testing.T) {
 			sessUUID.Bytes: {
 				ID:          sessUUID,
 				WorkspaceID: wsUUID,
+				AgentID:     agentUUID,
 				CreatorID:   creatorUUID,
 			},
 		},
@@ -143,7 +174,12 @@ func TestScopeAuthorizer_ChatTaskRequiresCreator(t *testing.T) {
 		t.Fatalf("creator should be allowed for chat task: ok=%v err=%v", ok, err)
 	}
 
-	ok, err = a.AuthorizeScope(ctx, otherStr, wsStr, realtime.ScopeTask, taskStr)
+	ok, err = a.AuthorizeScope(ctx, ownerStr, wsStr, realtime.ScopeTask, taskStr)
+	if err != nil || !ok {
+		t.Fatalf("agent owner should be allowed for chat task: ok=%v err=%v", ok, err)
+	}
+
+	ok, err = a.AuthorizeScope(ctx, peerStr, wsStr, realtime.ScopeTask, taskStr)
 	if err != nil || ok {
 		t.Fatalf("peer must be denied for chat task: ok=%v err=%v", ok, err)
 	}
@@ -192,6 +228,9 @@ func TestScopeAuthorizer_IssueTaskWorkspaceOnly(t *testing.T) {
 // so handleSubscribe reports "lookup_failed" rather than "forbidden".
 type failingScopeQuerier struct{}
 
+func (failingScopeQuerier) GetAgent(context.Context, pgtype.UUID) (db.Agent, error) {
+	return db.Agent{}, errors.New("connection reset by peer")
+}
 func (failingScopeQuerier) GetAgentTask(context.Context, pgtype.UUID) (db.AgentTaskQueue, error) {
 	return db.AgentTaskQueue{}, errors.New("connection reset by peer")
 }
@@ -209,6 +248,9 @@ type errOnInnerQuerier struct {
 	task db.AgentTaskQueue
 }
 
+func (*errOnInnerQuerier) GetAgent(context.Context, pgtype.UUID) (db.Agent, error) {
+	return db.Agent{}, errors.New("connection reset by peer")
+}
 func (q *errOnInnerQuerier) GetAgentTask(_ context.Context, _ pgtype.UUID) (db.AgentTaskQueue, error) {
 	return q.task, nil
 }
@@ -219,8 +261,16 @@ func (*errOnInnerQuerier) GetChatSession(context.Context, pgtype.UUID) (db.ChatS
 	return db.ChatSession{}, errors.New("connection reset by peer")
 }
 
+type errOnAgentQuerier struct {
+	*fakeScopeQuerier
+}
+
+func (*errOnAgentQuerier) GetAgent(context.Context, pgtype.UUID) (db.Agent, error) {
+	return db.Agent{}, errors.New("connection reset by peer")
+}
+
 // TestScopeAuthorizer_DoesNotSwallowQueryErrors pins #6037: a real database
-// error at any of the four lookup points must be returned to the caller as a
+// error at any lookup point must be returned to the caller as a
 // non-nil error, not silently converted to a (false, nil) "forbidden" denial.
 // Only a missing resource (pgx.ErrNoRows) stays a plain denial.
 func TestScopeAuthorizer_DoesNotSwallowQueryErrors(t *testing.T) {
@@ -230,6 +280,9 @@ func TestScopeAuthorizer_DoesNotSwallowQueryErrors(t *testing.T) {
 	_, issueUUID := mustUUID(t)
 	_, sessUUID := mustUUID(t)
 	chatScopeStr, _ := mustUUID(t)
+	agentLookupSessionStr, agentLookupSessionUUID := mustUUID(t)
+	_, otherCreatorUUID := mustUUID(t)
+	_, agentUUID := mustUUID(t)
 
 	a := newScopeAuthorizer(failingScopeQuerier{})
 	ctx := context.Background()
@@ -257,6 +310,22 @@ func TestScopeAuthorizer_DoesNotSwallowQueryErrors(t *testing.T) {
 	})
 	if _, err := chatTaskAuth.AuthorizeScope(ctx, userStr, wsStr, realtime.ScopeTask, taskStr); err == nil {
 		t.Fatalf("task-path GetChatSession error must propagate, got err=nil")
+	}
+
+	// Point 5: the session resolves, but checking the non-creator against the
+	// target agent owner fails.
+	agentAuth := newScopeAuthorizer(&errOnAgentQuerier{fakeScopeQuerier: &fakeScopeQuerier{
+		sessions: map[[16]byte]db.ChatSession{
+			agentLookupSessionUUID.Bytes: {
+				ID:          agentLookupSessionUUID,
+				WorkspaceID: util.MustParseUUID(wsStr),
+				AgentID:     agentUUID,
+				CreatorID:   otherCreatorUUID,
+			},
+		},
+	}})
+	if _, err := agentAuth.AuthorizeScope(ctx, userStr, wsStr, realtime.ScopeChat, agentLookupSessionStr); err == nil {
+		t.Fatalf("chat participant GetAgent error must propagate, got err=nil")
 	}
 }
 

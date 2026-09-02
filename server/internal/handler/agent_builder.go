@@ -182,7 +182,7 @@ type ListAgentBuilderSessionsResponse struct {
 // chat surface by the `kind = 'user'` agent filter, so before this endpoint the
 // studio had to delete one on navigation or leak it forever. Creator-scoped
 // like every other chat read — a workspace admin cannot list someone else's
-// drafts, matching loadChatSessionForUser's rule.
+// drafts, matching loadChatSessionForCreator's rule.
 func (h *Handler) ListAgentBuilderSessions(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	userID, ok := requireUserID(w, r)
@@ -277,7 +277,7 @@ func (h *Handler) SaveAgentBuilderDraft(w http.ResponseWriter, r *http.Request) 
 	// hang arbitrary JSON off any chat session the caller owns. Both are decided
 	// on this unlocked read: workspace, creator and carrier are immutable for a
 	// given session, so nothing the lock below could observe would change them.
-	session, ok := h.loadChatSessionForUser(w, r, userID, workspaceID, chi.URLParam(r, "sessionId"))
+	session, ok := h.loadChatSessionForCreator(w, r, userID, workspaceID, chi.URLParam(r, "sessionId"))
 	if !ok {
 		return
 	}
@@ -411,7 +411,7 @@ func (h *Handler) SwitchAgentBuilderRuntime(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Creator-only, like every other write on a chat session.
-	session, ok := h.loadChatSessionForUser(w, r, userID, workspaceID, chi.URLParam(r, "sessionId"))
+	session, ok := h.loadChatSessionForCreator(w, r, userID, workspaceID, chi.URLParam(r, "sessionId"))
 	if !ok {
 		return
 	}

@@ -15,6 +15,7 @@ import (
 // authorizer. Declared as an interface so the authorizer can be unit tested
 // with an in-memory fake (no DB required).
 type scopeAuthQuerier interface {
+	GetAgent(ctx context.Context, id pgtype.UUID) (db.Agent, error)
 	GetAgentTask(ctx context.Context, id pgtype.UUID) (db.AgentTaskQueue, error)
 	GetIssue(ctx context.Context, id pgtype.UUID) (db.Issue, error)
 	GetChatSession(ctx context.Context, id pgtype.UUID) (db.ChatSession, error)
@@ -24,8 +25,8 @@ type scopeAuthQuerier interface {
 // per-chat scopes (workspace/user scopes are validated by the hub itself
 // against the connection identity). It returns true only when the requested
 // resource exists, belongs to the caller's workspace, and — for chat
-// resources — was created by the caller (mirroring the HTTP creator-only
-// access model).
+// resources — the caller is either the session creator or target agent owner
+// (mirroring the HTTP participant access model).
 type dbScopeAuthorizer struct{ q scopeAuthQuerier }
 
 func newScopeAuthorizer(q scopeAuthQuerier) *dbScopeAuthorizer { return &dbScopeAuthorizer{q: q} }
@@ -42,6 +43,24 @@ func scopeLookupErr(err error) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func (a *dbScopeAuthorizer) authorizeChatParticipant(ctx context.Context, sess db.ChatSession, userID string) (bool, error) {
+	uidUUID, err := util.ParseUUID(userID)
+	if err != nil {
+		return false, nil
+	}
+	if sess.CreatorID == uidUUID {
+		return true, nil
+	}
+	agent, err := a.q.GetAgent(ctx, sess.AgentID)
+	if err != nil {
+		return scopeLookupErr(err)
+	}
+	if agent.WorkspaceID != sess.WorkspaceID {
+		return false, nil
+	}
+	return agent.OwnerID.Valid && agent.OwnerID == uidUUID, nil
 }
 
 func (a *dbScopeAuthorizer) AuthorizeScope(ctx context.Context, userID, workspaceID, scopeType, scopeID string) (bool, error) {
@@ -70,8 +89,8 @@ func (a *dbScopeAuthorizer) AuthorizeScope(ctx context.Context, userID, workspac
 			}
 			return issue.WorkspaceID == wsUUID, nil
 		}
-		// Chat tasks: only the chat session's creator may subscribe, mirroring
-		// the HTTP layer's creator-only access on chat resources.
+		// Chat tasks: the session creator and target agent owner may subscribe,
+		// mirroring the HTTP participant access model.
 		if task.ChatSessionID.Valid {
 			sess, err := a.q.GetChatSession(ctx, task.ChatSessionID)
 			if err != nil {
@@ -80,11 +99,7 @@ func (a *dbScopeAuthorizer) AuthorizeScope(ctx context.Context, userID, workspac
 			if sess.WorkspaceID != wsUUID {
 				return false, nil
 			}
-			uidUUID, err := util.ParseUUID(userID)
-			if err != nil || sess.CreatorID != uidUUID {
-				return false, nil
-			}
-			return true, nil
+			return a.authorizeChatParticipant(ctx, sess, userID)
 		}
 		return false, nil
 	case realtime.ScopeChat:
@@ -95,17 +110,10 @@ func (a *dbScopeAuthorizer) AuthorizeScope(ctx context.Context, userID, workspac
 		if sess.WorkspaceID != wsUUID {
 			return false, nil
 		}
-		// Chat sessions are private to their creator (see handler/chat.go:
-		// GetChatSession / SendChatMessage / MarkChatSessionRead all enforce
-		// CreatorID == userID). The realtime layer must not weaken this:
-		// otherwise any workspace member who learns a session_id could
-		// subscribe to chat:message / chat:done / chat:session_read for a
-		// peer's private chat.
-		uidUUID, err := util.ParseUUID(userID)
-		if err != nil || sess.CreatorID != uidUUID {
-			return false, nil
-		}
-		return true, nil
+		// The realtime layer matches the HTTP participant boundary so the
+		// creator and target agent owner can follow the same conversation while
+		// unrelated workspace peers remain unable to subscribe by session id.
+		return a.authorizeChatParticipant(ctx, sess, userID)
 	default:
 		return false, nil
 	}

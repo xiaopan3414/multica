@@ -18,7 +18,11 @@ func TestCreateChatSessionPublishesCreatedAfterCommit(t *testing.T) {
 
 	h := *testHandler
 	h.Bus = events.New()
+	_, agentOwnerID, _ := privateAgentTestFixture(t)
 	agentID := createHandlerTestAgent(t, "ChatSessionCreatedEventAgent", []byte("[]"))
+	if _, err := testPool.Exec(context.Background(), `UPDATE agent SET owner_id = $2 WHERE id = $1`, agentID, agentOwnerID); err != nil {
+		t.Fatalf("assign separate agent owner: %v", err)
+	}
 
 	published := make(chan events.Event, 1)
 	var visibleAtPublish bool
@@ -63,6 +67,9 @@ func TestCreateChatSessionPublishesCreatedAfterCommit(t *testing.T) {
 	}
 	if payload.ChatSessionID != response.ID || payload.WorkspaceID != testWorkspaceID {
 		t.Fatalf("payload = %+v, want session %s in workspace %s", payload, response.ID, testWorkspaceID)
+	}
+	if len(payload.RecipientUserIDs) != 2 || payload.RecipientUserIDs[0] != testUserID || payload.RecipientUserIDs[1] != agentOwnerID {
+		t.Fatalf("recipients = %v, want creator %s and agent owner %s", payload.RecipientUserIDs, testUserID, agentOwnerID)
 	}
 	if event.ActorID != testUserID || event.ActorType != "member" {
 		t.Fatalf("actor = %s/%s, want member/%s", event.ActorType, event.ActorID, testUserID)

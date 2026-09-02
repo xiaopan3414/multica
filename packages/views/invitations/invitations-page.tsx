@@ -18,8 +18,26 @@ import { useT } from "../i18n";
 import { Button } from "@multica/ui/components/ui/button";
 import { Card, CardContent } from "@multica/ui/components/ui/card";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
+import { Input } from "@multica/ui/components/ui/input";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
-import { LogOut, Mail, RefreshCw, Users } from "lucide-react";
+import { Link2, LogOut, Mail, RefreshCw, Users } from "lucide-react";
+
+const shareLinkCodePattern = /^[a-zA-Z0-9_-]{8,128}$/;
+
+export function extractShareLinkCode(input: string): string | null {
+  const value = input.trim();
+  if (!value) return null;
+
+  try {
+    const url = new URL(value, "http://multica.local");
+    const code = url.searchParams.get("code")?.trim() ?? "";
+    if (code && shareLinkCodePattern.test(code)) return code;
+  } catch {
+    // Fall through to accepting a raw share code.
+  }
+
+  return shareLinkCodePattern.test(value) ? value : null;
+}
 
 /**
  * Batch invitation handling page for first-contact users who land here
@@ -47,6 +65,9 @@ export function InvitationsPage({ joinOnly = false }: { joinOnly?: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState("");
+  const [linkJoining, setLinkJoining] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   const {
     data: invitations,
@@ -172,6 +193,47 @@ export function InvitationsPage({ joinOnly = false }: { joinOnly?: boolean }) {
     }
   };
 
+  const handleJoinByLink = async () => {
+    const code = extractShareLinkCode(inviteLink);
+    if (!code) {
+      setLinkError(t(($) => $.join_only.link_invalid));
+      return;
+    }
+
+    setLinkError(null);
+    setLinkJoining(true);
+    try {
+      const result = await api.joinByShareLink(code);
+      await api.markOnboardingComplete({
+        completion_path: "invite_accept",
+        workspace_id: result.workspace_id,
+      });
+      await useAuthStore.getState().refreshMe();
+      qc.invalidateQueries({ queryKey: workspaceKeys.myInvitations() });
+      const wsList = await qc.fetchQuery({
+        ...workspaceListOptions(),
+        staleTime: 0,
+      });
+      const joined = wsList.find((workspace) => workspace.id === result.workspace_id);
+      const slug = joined?.slug || result.workspace_slug;
+      if (!slug) {
+        throw new Error(t(($) => $.join_only.link_joined_workspace_missing));
+      }
+      push(paths.workspace(slug).issues());
+    } catch (e) {
+      setLinkError(
+        e instanceof Error ? e.message : t(($) => $.join_only.link_join_failed),
+      );
+    } finally {
+      setLinkJoining(false);
+    }
+  };
+
+  const handleInviteLinkChange = (value: string) => {
+    setInviteLink(value);
+    if (linkError) setLinkError(null);
+  };
+
   const handleRefresh = () => {
     setError(null);
     void Promise.all([
@@ -237,6 +299,11 @@ export function InvitationsPage({ joinOnly = false }: { joinOnly?: boolean }) {
           hint={t(($) => $.join_only.load_error_hint)}
           refreshing={invitationsFetching || workspacesFetching}
           onRefresh={handleRefresh}
+          inviteLink={inviteLink}
+          linkJoining={linkJoining}
+          linkError={linkError}
+          onInviteLinkChange={handleInviteLinkChange}
+          onJoinByLink={handleJoinByLink}
         />
       </InvitationsShell>
     );
@@ -257,6 +324,11 @@ export function InvitationsPage({ joinOnly = false }: { joinOnly?: boolean }) {
             })}
             refreshing={invitationsFetching || workspacesFetching}
             onRefresh={handleRefresh}
+            inviteLink={inviteLink}
+            linkJoining={linkJoining}
+            linkError={linkError}
+            onInviteLinkChange={handleInviteLinkChange}
+            onJoinByLink={handleJoinByLink}
           />
         </InvitationsShell>
       );
@@ -322,6 +394,19 @@ export function InvitationsPage({ joinOnly = false }: { joinOnly?: boolean }) {
             ))}
           </ul>
 
+          {joinOnly && (
+            <>
+              <JoinMethodDivider />
+              <JoinByLinkForm
+                value={inviteLink}
+                joining={linkJoining}
+                error={linkError}
+                onChange={handleInviteLinkChange}
+                onSubmit={handleJoinByLink}
+              />
+            </>
+          )}
+
           <Button
             className="w-full"
             onClick={handleSubmit}
@@ -344,11 +429,21 @@ function JoinOnlyEmptyState({
   hint,
   refreshing,
   onRefresh,
+  inviteLink,
+  linkJoining,
+  linkError,
+  onInviteLinkChange,
+  onJoinByLink,
 }: {
   title: string;
   hint: string;
   refreshing: boolean;
   onRefresh: () => void;
+  inviteLink: string;
+  linkJoining: boolean;
+  linkError: string | null;
+  onInviteLinkChange: (value: string) => void;
+  onJoinByLink: () => void;
 }) {
   const { t } = useT("invite");
   return (
@@ -367,8 +462,89 @@ function JoinOnlyEmptyState({
             ? t(($) => $.join_only.refreshing)
             : t(($) => $.join_only.refresh)}
         </Button>
+        <JoinMethodDivider />
+        <JoinByLinkForm
+          value={inviteLink}
+          joining={linkJoining}
+          error={linkError}
+          onChange={onInviteLinkChange}
+          onSubmit={onJoinByLink}
+        />
       </CardContent>
     </Card>
+  );
+}
+
+function JoinMethodDivider() {
+  const { t } = useT("invite");
+  return (
+    <div className="flex w-full items-center gap-3" aria-hidden="true">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-caption text-muted-foreground">
+        {t(($) => $.join_only.link_divider)}
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+function JoinByLinkForm({
+  value,
+  joining,
+  error,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  joining: boolean;
+  error: string | null;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const { t } = useT("invite");
+  const inputID = "workspace-invite-link";
+  const helpID = "workspace-invite-link-help";
+  const errorID = "workspace-invite-link-error";
+
+  return (
+    <form
+      className="flex w-full flex-col gap-3 text-left"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <div className="space-y-1.5">
+        <label htmlFor={inputID} className="text-body font-medium">
+          {t(($) => $.join_only.link_label)}
+        </label>
+        <Input
+          id={inputID}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={t(($) => $.join_only.link_placeholder)}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorID : helpID}
+          disabled={joining}
+        />
+        <p id={helpID} className="text-caption text-muted-foreground">
+          {t(($) => $.join_only.link_hint)}
+        </p>
+      </div>
+      <Button type="submit" className="w-full" disabled={joining || !value.trim()}>
+        <Link2 />
+        {joining
+          ? t(($) => $.join_only.link_joining)
+          : t(($) => $.join_only.link_join)}
+      </Button>
+      {error && (
+        <p id={errorID} role="alert" className="text-body text-destructive text-center">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }
 

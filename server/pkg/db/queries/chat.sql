@@ -70,7 +70,17 @@ LEFT JOIN LATERAL (
    ORDER BY m.created_at DESC
    LIMIT 1
 ) lm ON true
-WHERE cs.workspace_id = $1 AND cs.creator_id = $2 AND cs.status = 'active'
+WHERE cs.workspace_id = $1
+  AND (
+    cs.creator_id = $2
+    OR EXISTS (
+      SELECT 1
+      FROM agent participant_agent
+      WHERE participant_agent.id = cs.agent_id
+        AND participant_agent.owner_id = $2
+    )
+  )
+  AND cs.status = 'active'
   AND (
     lm.created_at IS NOT NULL
     OR (
@@ -116,7 +126,16 @@ LEFT JOIN LATERAL (
    ORDER BY m.created_at DESC
    LIMIT 1
 ) lm ON true
-WHERE cs.workspace_id = $1 AND cs.creator_id = $2
+WHERE cs.workspace_id = $1
+  AND (
+    cs.creator_id = $2
+    OR EXISTS (
+      SELECT 1
+      FROM agent participant_agent
+      WHERE participant_agent.id = cs.agent_id
+        AND participant_agent.owner_id = $2
+    )
+  )
   AND (
     lm.created_at IS NOT NULL
     OR (
@@ -1343,9 +1362,9 @@ SELECT
 FROM prioritized;
 
 -- name: ListPendingChatTasksByCreator :many
--- Aggregate view of all in-flight chat tasks owned by a given creator in a
--- workspace. Drives the FAB's "running" indicator when the chat window is
--- closed and no single session's query is active.
+-- Aggregate view of all in-flight chat tasks visible to a session creator or
+-- target agent owner in a workspace. Drives the FAB's "running" indicator when
+-- the chat window is closed and no single session's query is active.
 --
 -- Returns cs.agent_id so the handler can filter tasks belonging to private
 -- agents the caller has lost access to using the already-loaded `allowed`
@@ -1363,7 +1382,15 @@ WHERE atq.chat_session_id IS NOT NULL
   -- turn and must not surface as "running" chat work (MUL-5149 refresh follow-up).
   AND atq.regenerate_quick_actions_for IS NULL
   AND cs.workspace_id = $1
-  AND cs.creator_id = $2
+  AND (
+    cs.creator_id = $2
+    OR EXISTS (
+      SELECT 1
+      FROM agent participant_agent
+      WHERE participant_agent.id = cs.agent_id
+        AND participant_agent.owner_id = $2
+    )
+  )
 ORDER BY atq.created_at DESC;
 
 -- name: HasPendingChatTasksByCreator :one
@@ -1386,7 +1413,15 @@ SELECT EXISTS (
     -- never light the FAB "running" indicator (MUL-5149 refresh follow-up).
     AND atq.regenerate_quick_actions_for IS NULL
     AND cs.workspace_id = sqlc.arg(workspace_id)
-    AND cs.creator_id = sqlc.arg(creator_id)
+    AND (
+      cs.creator_id = sqlc.arg(creator_id)
+      OR EXISTS (
+        SELECT 1
+        FROM agent participant_agent
+        WHERE participant_agent.id = cs.agent_id
+          AND participant_agent.owner_id = sqlc.arg(creator_id)
+      )
+    )
     AND cs.agent_id = ANY(sqlc.arg(agent_ids)::uuid[])
 ) AS has_pending;
 

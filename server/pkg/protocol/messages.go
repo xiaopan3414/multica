@@ -289,18 +289,21 @@ type ChatCancelFinalizedPayload struct {
 	ElapsedMs   int64  `json:"elapsed_ms,omitempty"`
 }
 
-// ChatSessionReadPayload is broadcast when the creator marks a session as read.
-// Fires to other devices so their unread counts stay in sync.
+// ChatSessionReadPayload is broadcast when a participant marks a session as
+// read. Fires to other devices so their unread counts stay in sync.
 type ChatSessionReadPayload struct {
 	ChatSessionID string `json:"chat_session_id"`
 }
 
-// ChatSessionCreatedPayload tells the creator's other devices to refresh the
-// authoritative session list. WorkspaceID prevents a personal connection that
-// is currently viewing another workspace from invalidating the wrong cache.
+// ChatSessionCreatedPayload tells each chat participant's devices to refresh
+// the authoritative session list. WorkspaceID prevents a personal connection
+// that is currently viewing another workspace from invalidating the wrong
+// cache. RecipientUserIDs is server-internal routing metadata and never crosses
+// the WebSocket boundary.
 type ChatSessionCreatedPayload struct {
-	ChatSessionID string `json:"chat_session_id"`
-	WorkspaceID   string `json:"workspace_id"`
+	ChatSessionID    string   `json:"chat_session_id"`
+	WorkspaceID      string   `json:"workspace_id"`
+	RecipientUserIDs []string `json:"-"`
 }
 
 // ChatSessionDeletedPayload is broadcast when a chat session is hard-deleted

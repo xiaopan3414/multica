@@ -145,9 +145,14 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resolvedSessionID := uuidToString(session.ID)
+	recipientUserIDs := []string{userID}
+	if ownerID := uuidToString(agent.OwnerID); ownerID != "" && ownerID != userID {
+		recipientUserIDs = append(recipientUserIDs, ownerID)
+	}
 	h.publish(protocol.EventChatSessionCreated, workspaceID, "member", userID, protocol.ChatSessionCreatedPayload{
-		ChatSessionID: resolvedSessionID,
-		WorkspaceID:   workspaceID,
+		ChatSessionID:    resolvedSessionID,
+		WorkspaceID:      workspaceID,
+		RecipientUserIDs: recipientUserIDs,
 	})
 
 	writeJSON(w, http.StatusCreated, chatSessionToResponse(session))
@@ -246,7 +251,7 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (h *Handler) loadChatSessionForUser(w http.ResponseWriter, r *http.Request, userID, workspaceID, sessionID string) (db.ChatSession, bool) {
+func (h *Handler) loadChatSessionInWorkspace(w http.ResponseWriter, r *http.Request, workspaceID, sessionID string) (db.ChatSession, bool) {
 	sessionUUID, ok := parseUUIDOrBadRequest(w, sessionID, "chat session id")
 	if !ok {
 		return db.ChatSession{}, false
@@ -263,6 +268,50 @@ func (h *Handler) loadChatSessionForUser(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusNotFound, "chat session not found")
 		return db.ChatSession{}, false
 	}
+	return session, true
+}
+
+// userCanAccessChatSession admits the two participants in a regular chat: the
+// member who created the session and the owner of the agent it targets.
+func (h *Handler) userCanAccessChatSession(ctx context.Context, session db.ChatSession, userID string) (bool, error) {
+	userUUID, err := util.ParseUUID(userID)
+	if err != nil {
+		return false, nil
+	}
+	if session.CreatorID == userUUID {
+		return true, nil
+	}
+	agent, err := h.Queries.GetAgent(ctx, session.AgentID)
+	if err != nil {
+		return false, err
+	}
+	return agent.OwnerID.Valid && agent.OwnerID == userUUID, nil
+}
+
+func (h *Handler) loadChatSessionForUser(w http.ResponseWriter, r *http.Request, userID, workspaceID, sessionID string) (db.ChatSession, bool) {
+	session, ok := h.loadChatSessionInWorkspace(w, r, workspaceID, sessionID)
+	if !ok {
+		return db.ChatSession{}, false
+	}
+	allowed, err := h.userCanAccessChatSession(r.Context(), session, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to authorize chat session")
+		return db.ChatSession{}, false
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "not your chat session")
+		return db.ChatSession{}, false
+	}
+	return session, true
+}
+
+// loadChatSessionForCreator preserves creator-only access for hidden agent
+// builder conversations, which are personal drafts rather than shared chats.
+func (h *Handler) loadChatSessionForCreator(w http.ResponseWriter, r *http.Request, userID, workspaceID, sessionID string) (db.ChatSession, bool) {
+	session, ok := h.loadChatSessionInWorkspace(w, r, workspaceID, sessionID)
+	if !ok {
+		return db.ChatSession{}, false
+	}
 	if uuidToString(session.CreatorID) != userID {
 		writeError(w, http.StatusForbidden, "not your chat session")
 		return db.ChatSession{}, false
@@ -270,7 +319,7 @@ func (h *Handler) loadChatSessionForUser(w http.ResponseWriter, r *http.Request,
 	return session, true
 }
 
-// gateChatSessionForUser combines the session ownership check with the
+// gateChatSessionForUser combines the session participant check with the
 // private-agent access gate so a member who has lost access to the target
 // agent (role downgrade, ownership transfer, agent flipped to private)
 // cannot continue reading the chat transcript even though they remain the
@@ -654,7 +703,7 @@ func (h *Handler) SetChatSessionArchived(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, chatSessionToResponse(updated))
 }
 
-// DeleteChatSession hard-deletes a chat session owned by the caller. The
+// DeleteChatSession hard-deletes a chat session the caller participates in. The
 // row lock + cancel + delete run inside a single tx so a concurrent
 // SendChatMessage cannot enqueue a task that would later be orphaned by
 // the FK ON DELETE SET NULL on agent_task_queue.chat_session_id. Cancel
@@ -907,8 +956,8 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	// message bound to that task (so it belongs to the task's immutable input
 	// batch the instant it exists), attachment bindings, and the session touch
 	// all commit together, and the daemon is only notified after the commit. For
-	// web chat the sender is the authenticated request user (sessions are
-	// creator-only), so they are the task initiator — surfaced to the agent
+	// web chat the sender is the authenticated request user, so either
+	// participant is recorded as the task initiator — surfaced to the agent
 	// under `## Task Initiator`. actorType/actorID were resolved above for the
 	// invoke gate.
 	sent, err := h.TaskService.SendDirectChatMessage(r.Context(), session, agent, parseUUID(userID), req.Content, attachmentIDs, actorType, parseUUID(actorID))
@@ -1305,7 +1354,7 @@ func (h *Handler) MarkChatSessionRead(w http.ResponseWriter, r *http.Request) {
 // ChatDraftRestoreResponse is one recoverable composer draft: a deferred
 // cancellation settled as empty-transcript after the cancel HTTP response
 // returned, so the deleted prompt is persisted server-side until the
-// creator's client applies and consumes it. Attachments are resolved from
+// participant's client applies and consumes it. Attachments are resolved from
 // the stored ids at read time so they carry the normal handler URL policy.
 type ChatDraftRestoreResponse struct {
 	ID            string               `json:"id"`
@@ -1320,10 +1369,9 @@ type ChatDraftRestoresResponse struct {
 	Restores []ChatDraftRestoreResponse `json:"restores"`
 }
 
-// ListChatDraftRestores returns the session's pending draft restores.
-// Creator-only via loadChatSessionForUser — deliberately not the
-// private-agent gate: the content is the caller's own deleted prompt, and
-// losing agent access must not strand it server-side forever.
+// ListChatDraftRestores returns the session's pending draft restores to either
+// participant. It deliberately skips the private-agent gate so a creator who
+// later loses agent access can still recover and consume a cancelled prompt.
 func (h *Handler) ListChatDraftRestores(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r)
 	if !ok {
@@ -1468,10 +1516,10 @@ type CancelTaskByUserResponse struct {
 	CancelledChatMessage *CancelledChatMessageResponse `json:"cancelled_chat_message,omitempty"`
 }
 
-// ListPendingChatTasks returns every in-flight chat task owned by the current
-// user in this workspace. Drives the FAB's "running" indicator when the chat
-// window is closed (no per-session query is subscribed). Tasks belonging to
-// private agents the caller has lost access to are dropped from the response.
+// ListPendingChatTasks returns every in-flight chat task where the current user
+// is the session creator or target agent owner. It drives the FAB's "running"
+// indicator when the chat window is closed. Tasks belonging to private agents
+// the caller has lost access to are dropped from the response.
 func (h *Handler) ListPendingChatTasks(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r)
 	if !ok {
@@ -1751,8 +1799,8 @@ func (h *Handler) ClearQueuedChatTasks(w http.ResponseWriter, r *http.Request) {
 // alone is exactly what 404'd these tasks before (MUL-2827).
 //
 // On top of tenancy, two privacy models layer on:
-//   - a chat task is private to the member who started the conversation, so
-//     only that creator may cancel it;
+//   - a chat task may be cancelled by the conversation creator or the owner
+//     of the agent used by that conversation;
 //   - every other task surfaces on the agent Activity tab and the workspace
 //     task snapshot, both of which hide private agents from members without
 //     access. Cancellation mirrors that gate via canAccessPrivateAgent so the
@@ -1812,8 +1860,8 @@ func (h *Handler) CancelTaskByUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if task.ChatSessionID.Valid {
-		// Chat privacy: only the member who opened the conversation may
-		// cancel its task, even though the workspace is shared.
+		// Chat participants are the member who opened the conversation and
+		// the owner of its target agent.
 		cs, err := h.Queries.GetChatSessionInWorkspace(r.Context(), db.GetChatSessionInWorkspaceParams{
 			ID:          task.ChatSessionID,
 			WorkspaceID: wsUUID,
@@ -1822,7 +1870,12 @@ func (h *Handler) CancelTaskByUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "task not found")
 			return
 		}
-		if uuidToString(cs.CreatorID) != userID {
+		allowed, err := h.userCanAccessChatSession(r.Context(), cs, userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to authorize task")
+			return
+		}
+		if !allowed {
 			writeError(w, http.StatusForbidden, "not your task")
 			return
 		}

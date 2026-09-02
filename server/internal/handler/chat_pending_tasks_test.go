@@ -840,12 +840,10 @@ func TestHasPendingChatTasks_IgnoresTerminalTasks(t *testing.T) {
 	}
 }
 
-// TestHasPendingChatTasks_HidesOtherCreatorsTask locks the cs.creator_id gate:
-// user A's in-flight task on a workspace-visible agent — one B can freely
-// access — must still return has_pending=false for B, because B is not the
-// creator. This is the tenant boundary that the agent-visibility filter does
-// NOT cover (both users can see the agent), so it needs its own guard.
-func TestHasPendingChatTasks_HidesOtherCreatorsTask(t *testing.T) {
+// TestHasPendingChatTasks_UsesChatParticipantBoundary verifies that pending
+// chat aggregates include the session creator and target agent owner while
+// still excluding an unrelated member who can otherwise access the agent.
+func TestHasPendingChatTasks_UsesChatParticipantBoundary(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
@@ -857,11 +855,12 @@ func TestHasPendingChatTasks_HidesOtherCreatorsTask(t *testing.T) {
 	session := insertChatSessionAs(t, publicAgentID, creatorA)
 	insertPendingChatTask(t, publicAgentID, session, "running")
 
-	// B is not the creator → the creator_id filter must drop A's task.
+	// B is neither the creator nor the agent owner, so the participant filter
+	// must drop A's task.
 	w := httptest.NewRecorder()
 	testHandler.HasPendingChatTasks(w, chatPendingCtxAs(t, newRequestAs(otherB, "GET", "/api/chat/pending-tasks/has-any", nil), otherB))
 	if decodeHasPending(t, w) {
-		t.Fatalf("has-any leaked user A's task to user B (cs.creator_id gate not enforced)")
+		t.Fatalf("has-any leaked user A's task to unrelated user B")
 	}
 
 	// Sanity: A (the creator) does see their own task on the same agent.
@@ -871,10 +870,23 @@ func TestHasPendingChatTasks_HidesOtherCreatorsTask(t *testing.T) {
 		t.Fatalf("has-any returned false for the task's own creator")
 	}
 
+	// testUserID owns publicAgentID and is therefore the second participant.
+	w = httptest.NewRecorder()
+	testHandler.HasPendingChatTasks(w, chatPendingCtxAs(t, newRequestAs(testUserID, "GET", "/api/chat/pending-tasks/has-any", nil), testUserID))
+	if !decodeHasPending(t, w) {
+		t.Fatalf("has-any returned false for the target agent owner")
+	}
+
 	// The detailed list endpoint enforces the same creator gate.
 	w = httptest.NewRecorder()
 	testHandler.ListPendingChatTasks(w, chatPendingCtxAs(t, newRequestAs(otherB, "GET", "/api/chat/pending-tasks", nil), otherB))
 	if resp := decodePendingTasks(t, w); len(resp.Tasks) != 0 {
 		t.Fatalf("list leaked user A's task to user B: %+v", resp.Tasks)
+	}
+
+	w = httptest.NewRecorder()
+	testHandler.ListPendingChatTasks(w, chatPendingCtxAs(t, newRequestAs(testUserID, "GET", "/api/chat/pending-tasks", nil), testUserID))
+	if resp := decodePendingTasks(t, w); len(resp.Tasks) != 1 || resp.Tasks[0].ChatSessionID != session {
+		t.Fatalf("list omitted agent owner's pending task: %+v", resp.Tasks)
 	}
 }
