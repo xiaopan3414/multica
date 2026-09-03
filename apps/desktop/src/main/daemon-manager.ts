@@ -55,6 +55,7 @@ import {
   isValidAgentId,
   normalizeAgentWorkingDirectories,
 } from "../shared/agent-working-directories";
+import { windowsCliLoginItemSettings } from "./windows-cli-startup";
 
 const POLL_INTERVAL_MS = 5_000;
 const PREFS_PATH = join(homedir(), ".multica", "desktop_prefs.json");
@@ -747,10 +748,9 @@ async function savePrefs(prefs: DaemonPrefs): Promise<void> {
 
 function applyWindowsLaunchAtLogin(enabled: boolean): void {
   if (process.platform !== "win32" || !app.isPackaged) return;
-  app.setLoginItemSettings({
-    openAtLogin: enabled,
-    path: process.execPath,
-  });
+  app.setLoginItemSettings(
+    windowsCliLoginItemSettings(enabled, process.execPath),
+  );
 }
 
 function workspaceRootError(
@@ -1362,8 +1362,17 @@ function stopLogTail(): void {
 
 export function setupDaemonManager(
   windowGetter: () => BrowserWindow | null,
+  options: {
+    initialApiUrl?: string;
+    startCliServiceAtLogin?: boolean;
+  } = {},
 ): void {
   getMainWindow = windowGetter;
+
+  if (options.initialApiUrl) {
+    targetApiBaseUrl = options.initialApiUrl;
+    invalidateActiveProfile();
+  }
 
   ipcMain.handle("daemon:set-target-api-url", async (_e, url: string) => {
     const normalized = url || null;
@@ -1419,19 +1428,27 @@ export function setupDaemonManager(
     (_event, agentId: string, path: string) =>
       setAgentWorkingDirectory(agentId, path),
   );
-  ipcMain.handle("daemon:auto-start", async () => {
+  const autoStartDaemon = async (
+    preference: "autoStart" | "launchAtLogin",
+  ): Promise<void> => {
     const prefs = await loadPrefs();
-    if (!prefs.autoStart) return;
+    if (!prefs[preference]) return;
     const bin = await resolveCliBinary();
     if (!bin) return;
     const health = await fetchHealth();
-    if (health.state === "running") {
+    if (health.state === "running" || health.state === "starting") {
       // Daemon is up but may be running an older CLI than the one we just
       // bundled. Restart it so the new binary actually takes effect.
-      await ensureRunningDaemonVersionMatches();
+      if (health.state === "running") {
+        await ensureRunningDaemonVersionMatches();
+      }
       return;
     }
     await startDaemon();
+  };
+
+  ipcMain.handle("daemon:auto-start", async () => {
+    await withGuard(() => autoStartDaemon("autoStart"));
   });
 
   ipcMain.on("daemon:start-log-stream", () => {
@@ -1466,7 +1483,14 @@ export function setupDaemonManager(
     .catch((err) => {
       console.warn("[daemon] failed to update Windows login startup:", err);
     });
-  void bootstrapCli();
+  const cliReady = bootstrapCli();
+  if (options.startCliServiceAtLogin) {
+    void cliReady
+      .then(() => withGuard(() => autoStartDaemon("launchAtLogin")))
+      .catch((err) => {
+        console.warn("[daemon] failed to start CLI service at login:", err);
+      });
+  }
 
   let isQuitting = false;
   app.on("before-quit", (event) => {

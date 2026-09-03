@@ -6,7 +6,7 @@ on:
       artifact_label:
         description: Label used for the downloadable Actions artifact
         required: true
-        default: feiq-v0.4.34.9
+        default: feiq-v0.4.34.10
 
 permissions:
   contents: read
@@ -57,6 +57,7 @@ jobs:
           settings/components/repositories-tab.test.tsx
           settings/components/settings-page.test.tsx
           settings/components/integrations-tab.test.tsx
+          locales/desktop-daemon-copy.test.ts
 
       - name: Test Desktop runtime configuration
         working-directory: apps/desktop
@@ -64,6 +65,7 @@ jobs:
           pnpm exec vitest run
           src/shared/runtime-config.test.ts
           src/main/runtime-config-loader.test.ts
+          src/main/windows-cli-startup.test.ts
           src/main/local-directory.test.ts
           src/renderer/src/pages/login.test.tsx
           src/renderer/src/components/private-agent-working-directory.test.tsx

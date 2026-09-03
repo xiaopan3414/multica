@@ -37,7 +37,7 @@ export interface DaemonStatus {
 export interface DaemonPrefs {
   autoStart: boolean;
   autoStop: boolean;
-  /** Start the packaged Desktop app when the user signs in to Windows. */
+  /** Start Desktop in the background and bring up its CLI service at Windows login. */
   launchAtLogin: boolean;
   /** Task workspace/cache root. Empty means the CLI profile default. */
   workspacesRoot: string;

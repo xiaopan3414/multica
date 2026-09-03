@@ -28,8 +28,9 @@ const translations = {
       sign_in_again: "Sign in again",
       externally_managed_prefix: "Manage this service with",
       externally_managed_suffix: ".",
-      windows_start_title: "Start Multica with Windows",
-      windows_start_description: "Open after signing in to Windows.",
+      windows_start_title: "Start CLI service at login",
+      windows_start_description:
+        "Start Multica in the background and bring the local CLI service online.",
       auto_start_title: "Start local service automatically",
       auto_start_description: "Start after Desktop opens.",
       auto_stop_title: "Stop local service when exiting",
@@ -137,12 +138,15 @@ describe("DaemonSettingsTab", () => {
 
   afterEach(cleanup);
 
-  it("persists the Windows login-start preference", async () => {
+  it("shows one Windows CLI startup switch and persists its preference", async () => {
     render(<DaemonSettingsTab />);
 
     const toggle = screen.getByRole("switch", {
-      name: "Start Multica with Windows",
+      name: "Start CLI service at login",
     });
+    expect(
+      screen.queryByRole("switch", { name: "Start local service automatically" }),
+    ).not.toBeInTheDocument();
     await waitFor(() => expect(toggle).toBeEnabled());
     fireEvent.click(toggle);
 

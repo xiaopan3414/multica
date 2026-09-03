@@ -60,6 +60,7 @@ import {
   NotificationGate,
   parseNativeNotificationPayload,
 } from "./notification-gate";
+import { isWindowsCliServiceStartup } from "./windows-cli-startup";
 
 // Guards against registering the will-download handler more than once on the
 // same session. window.webContents.session is shared, and createWindow() can
@@ -139,6 +140,11 @@ const notificationGate = new NotificationGate();
 const mainRendererMessages = new MainRendererMessageQueue();
 let desktopInitialized = false;
 let authSessionGeneration = 0;
+const startedForCliService = isWindowsCliServiceStartup(
+  process.platform,
+  process.argv,
+);
+let showMainWindowOnReady = !startedForCliService;
 const rendererRouteContexts = new WeakMap<
   Electron.WebContents,
   RendererRouteContext
@@ -161,7 +167,9 @@ function sendMainRendererMessage(
 }
 
 function focusMainWindow(window: BrowserWindow): void {
+  showMainWindowOnReady = true;
   if (window.isMinimized()) window.restore();
+  window.setSkipTaskbar(false);
   window.show();
   window.focus();
 }
@@ -305,6 +313,7 @@ function createWindow(): BrowserWindow {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 17 },
     show: false,
+    skipTaskbar: !showMainWindowOnReady,
     autoHideMenuBar: true,
     // Windows/Linux pick up the window/taskbar icon from this option.
     // On macOS it's ignored (dock comes from app.dock.setIcon below).
@@ -358,6 +367,7 @@ function createWindow(): BrowserWindow {
   );
 
   window.on("ready-to-show", () => {
+    if (!showMainWindowOnReady) return;
     // Restore max/fullscreen after normal bounds are applied.
     if (windowOpts.isFullScreen) {
       window.setFullScreen(true);
@@ -592,12 +602,18 @@ if (!gotTheLock) {
 
   // Windows/Linux: second instance passes deep link via argv
   app.on("second-instance", (_event, argv) => {
-    const window = ensureMainWindow();
-    if (window) focusMainWindow(window);
-
     // On Windows the deep link URL is the last argv entry
     const deepLinkUrl = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
-    if (deepLinkUrl) handleDeepLink(deepLinkUrl);
+    if (deepLinkUrl) {
+      handleDeepLink(deepLinkUrl);
+      return;
+    }
+
+    // Windows may invoke the login item while an interactive instance is
+    // already running. That background request must not steal focus.
+    if (isWindowsCliServiceStartup(process.platform, argv)) return;
+    const window = ensureMainWindow();
+    if (window) focusMainWindow(window);
   });
 
   // Windows/Linux cold-start deep links are safe to parse now. Delivery is
@@ -606,7 +622,10 @@ if (!gotTheLock) {
   const coldStartDeepLink = process.argv.find((arg) =>
     arg.startsWith(`${PROTOCOL}://`),
   );
-  if (coldStartDeepLink) handleDeepLink(coldStartDeepLink);
+  if (coldStartDeepLink) {
+    showMainWindowOnReady = true;
+    handleDeepLink(coldStartDeepLink);
+  }
 
   app.whenReady().then(async () => {
     const viteEnv = import.meta.env as ImportMetaEnv & {
@@ -827,11 +846,15 @@ if (!gotTheLock) {
     });
 
     desktopInitialized = true;
-    createWindow();
-
     setupAutoUpdater(() => mainWindow);
-    setupDaemonManager(() => mainWindow);
+    setupDaemonManager(() => mainWindow, {
+      initialApiUrl: runtimeConfigResult.ok
+        ? runtimeConfigResult.config.apiUrl
+        : undefined,
+      startCliServiceAtLogin: startedForCliService,
+    });
     setupLocalDirectory(() => mainWindow);
+    createWindow();
 
     app.on("activate", () => {
       const window = ensureMainWindow();

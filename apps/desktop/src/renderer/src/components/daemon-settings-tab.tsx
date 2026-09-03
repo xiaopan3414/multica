@@ -216,7 +216,7 @@ export function DaemonSettingsTab() {
       )}
 
       <SettingsCard>
-        {window.desktopAPI.appInfo.os === "windows" && (
+        {window.desktopAPI.appInfo.os === "windows" ? (
           <SettingsRow
             label={t(($) => $.desktop.daemon.windows_start_title)}
             description={t(($) => $.desktop.daemon.windows_start_description)}
@@ -230,21 +230,21 @@ export function DaemonSettingsTab() {
               aria-label={t(($) => $.desktop.daemon.windows_start_title)}
             />
           </SettingsRow>
+        ) : (
+          <SettingsRow
+            label={t(($) => $.desktop.daemon.auto_start_title)}
+            description={t(($) => $.desktop.daemon.auto_start_description)}
+          >
+            <Switch
+              checked={prefs.autoStart}
+              onCheckedChange={(checked) =>
+                updateBooleanPref("autoStart", checked)
+              }
+              disabled={!prefsReady || saving || externallyManaged}
+              aria-label={t(($) => $.desktop.daemon.auto_start_title)}
+            />
+          </SettingsRow>
         )}
-
-        <SettingsRow
-          label={t(($) => $.desktop.daemon.auto_start_title)}
-          description={t(($) => $.desktop.daemon.auto_start_description)}
-        >
-          <Switch
-            checked={prefs.autoStart}
-            onCheckedChange={(checked) =>
-              updateBooleanPref("autoStart", checked)
-            }
-            disabled={!prefsReady || saving || externallyManaged}
-            aria-label={t(($) => $.desktop.daemon.auto_start_title)}
-          />
-        </SettingsRow>
 
         <SettingsRow
           label={t(($) => $.desktop.daemon.auto_stop_title)}
