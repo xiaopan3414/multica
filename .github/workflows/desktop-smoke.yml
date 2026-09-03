@@ -85,7 +85,7 @@ jobs:
           )
 
           $buildInfo = @(
-            "Artifact label: feiq-v0.4.34.12",
+            "Artifact label: feiq-v0.4.34.13",
             "Source commit: $(& git rev-parse HEAD)",
             "Source version: $(& git describe --tags --match 'v[0-9]*' --always)",
             "Platform: Windows x64",
@@ -100,7 +100,7 @@ jobs:
       - name: Upload Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-windows-x64-feiq-v0.4.34.12
+          name: multica-desktop-windows-x64-feiq-v0.4.34.13
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.blockmap

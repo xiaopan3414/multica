@@ -112,6 +112,9 @@ export function LoginPage({
   const verificationCodeDeliveryHint = useConfigStore(
     (state) => state.verificationCodeDeliveryHint,
   ).trim();
+  const displayedVerificationCodeDeliveryHint = verificationCodeDeliveryHint
+    .replace(/[，,]\s*请在飞秋消息中查看[。.]?$/, "")
+    .trim();
   const loginEmailDomain = useConfigStore((state) => state.loginEmailDomain)
     .trim()
     .replace(/^@/, "")
@@ -373,12 +376,12 @@ export function LoginPage({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
-            {verificationCodeDeliveryHint ? (
+            {displayedVerificationCodeDeliveryHint ? (
               <p
                 role="status"
-                className="w-full text-balance border-l-2 border-primary pl-3 text-left text-body leading-5 text-foreground"
+                className="w-full whitespace-nowrap border-l-2 border-primary pl-3 text-left text-body text-foreground"
               >
-                {verificationCodeDeliveryHint}
+                {displayedVerificationCodeDeliveryHint}
               </p>
             ) : null}
             <InputOTP

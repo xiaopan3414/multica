@@ -236,11 +236,11 @@ describe("LoginPage", () => {
     expect(mockSendCode).toHaveBeenCalledWith("lisi@myhexin.com");
   });
 
-  it("shows the operator delivery hint instead of telling the user to check email", async () => {
+  it("shows a single-line Feiq delivery hint without the redundant suffix", async () => {
     configStore.getState().setAuthConfig({
       allowSignup: true,
       verificationCodeDeliveryHint:
-        "The verification code is in your Feiq messages.",
+        "验证码已发送到当前电脑的飞秋，请在飞秋消息中查看。",
     });
     mockSendCode.mockResolvedValueOnce(undefined);
     renderWithI18n(<LoginPage onSuccess={onSuccess} />);
@@ -250,10 +250,9 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     const deliveryHint = await screen.findByRole("status");
-    expect(deliveryHint).toHaveTextContent(
-      "The verification code is in your Feiq messages.",
-    );
-    expect(deliveryHint).toHaveClass("text-balance", "leading-5");
+    expect(deliveryHint).toHaveTextContent("验证码已发送到当前电脑的飞秋");
+    expect(deliveryHint).not.toHaveTextContent("请在飞秋消息中查看");
+    expect(deliveryHint).toHaveClass("whitespace-nowrap");
     expect(screen.getByText("Enter verification code")).toBeInTheDocument();
     expect(screen.queryByText("Check your email")).not.toBeInTheDocument();
   });
