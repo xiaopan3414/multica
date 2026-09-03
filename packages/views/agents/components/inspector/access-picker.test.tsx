@@ -144,13 +144,9 @@ describe("AccessPicker owner-only editing (MUL-3963)", () => {
 
     expect(
       screen
-        .getAllByRole("checkbox")
-        .map((checkbox) => checkbox.getAttribute("id")),
-    ).toEqual([
-      "agent-access-member-owner",
-      "agent-access-member-admin",
-      "agent-access-member-member",
-    ]);
+        .getAllByText(/^(Owner|Admin|Member)$/)
+        .map((name) => name.textContent),
+    ).toEqual(["Owner", "Admin", "Member"]);
   });
 
   it("workspace scope removes redundant member grants", () => {
