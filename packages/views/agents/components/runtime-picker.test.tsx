@@ -120,4 +120,46 @@ describe("RuntimePicker (creation studio)", () => {
     }
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it("waits for identity before defaulting to the current user's runtime", () => {
+    const onSelect = vi.fn();
+    const ownerRuntime = makeRuntime({
+      id: "rt-owner",
+      name: "Codex (owner.local)",
+      owner_id: "workspace-owner",
+      visibility: "public",
+    });
+    const mine = makeRuntime({
+      id: "rt-mine",
+      name: "Codex (mine.local)",
+      owner_id: ME,
+    });
+    const view = render(
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <RuntimePicker
+          runtimes={[ownerRuntime, mine]}
+          members={MEMBERS}
+          currentUserId={null}
+          selectedRuntimeId=""
+          onSelect={onSelect}
+        />
+      </I18nProvider>,
+    );
+
+    expect(onSelect).not.toHaveBeenCalled();
+
+    view.rerender(
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <RuntimePicker
+          runtimes={[ownerRuntime, mine]}
+          members={MEMBERS}
+          currentUserId={ME}
+          selectedRuntimeId=""
+          onSelect={onSelect}
+        />
+      </I18nProvider>,
+    );
+
+    expect(onSelect).toHaveBeenCalledWith("rt-mine");
+  });
 });

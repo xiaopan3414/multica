@@ -44,6 +44,7 @@ import {
 import { ActorAvatar } from "../../common/actor-avatar";
 import { CharCounter } from "./char-counter";
 import { useT } from "../../i18n";
+import { sortWorkspaceMembersForPermissionPicker } from "./agent-picker-order";
 
 export function CreateAgentDialog({
   runtimes,
@@ -529,7 +530,9 @@ function AccessSection({
   const isWorkspace = !isPrivate && workspaceTargetOn;
   const isMembers = !isPrivate && !workspaceTargetOn;
 
-  const otherMembers = members.filter((m) => m.user_id !== currentUserId);
+  const otherMembers = sortWorkspaceMembersForPermissionPicker(
+    members.filter((m) => m.user_id !== currentUserId),
+  );
 
   const toggleMember = (userId: string, checked: boolean) => {
     const next = new Set(selectedMemberIds);

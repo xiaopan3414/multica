@@ -329,8 +329,10 @@ function computeFilteredRuntimes(
   currentUserId: string | null,
 ): RuntimeDevice[] {
   const filtered =
-    filter === "mine" && currentUserId
-      ? runtimes.filter((r) => r.owner_id === currentUserId)
+    filter === "mine"
+      ? currentUserId
+        ? runtimes.filter((r) => r.owner_id === currentUserId)
+        : []
       : runtimes;
   return filtered.toSorted((a, b) => {
     const aMine = a.owner_id === currentUserId;

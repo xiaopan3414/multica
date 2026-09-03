@@ -25,6 +25,7 @@ import {
   memberListOptions,
   skillListOptions,
 } from "@multica/core/workspace/queries";
+import { usableRuntimesForAgentCreation } from "../components/agent-picker-order";
 
 interface CreateAgentForm {
   draft: AgentDraft;
@@ -90,12 +91,7 @@ export function useCreateAgentForm(options?: {
   const [draft, setDraft] = useState<AgentDraft>(EMPTY_AGENT_DRAFT);
 
   const usableRuntimes = useMemo(
-    () =>
-      runtimes.filter(
-        (runtime) =>
-          runtime.status === "online" &&
-          isRuntimeUsableForUser(runtime, currentUserId),
-      ),
+    () => usableRuntimesForAgentCreation(runtimes, currentUserId),
     [currentUserId, runtimes],
   );
   const selectedRuntime =

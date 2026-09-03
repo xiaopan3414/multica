@@ -130,6 +130,29 @@ describe("AccessPicker owner-only editing (MUL-3963)", () => {
     });
   });
 
+  it("lists workspace owners and administrators before ordinary members", () => {
+    const members = [
+      { user_id: "member", name: "Member", role: "member" },
+      { user_id: "admin", name: "Admin", role: "admin" },
+      { user_id: "owner", name: "Owner", role: "owner" },
+    ] as unknown as MemberWithUser[];
+    renderPicker({ canEdit: true, members });
+
+    fireEvent.click(
+      screen.getByRole("radio", { name: /^Specific people/i }),
+    );
+
+    expect(
+      screen
+        .getAllByRole("checkbox")
+        .map((checkbox) => checkbox.getAttribute("id")),
+    ).toEqual([
+      "agent-access-member-owner",
+      "agent-access-member-admin",
+      "agent-access-member-member",
+    ]);
+  });
+
   it("workspace scope removes redundant member grants", () => {
     const { onChange } = renderPicker({
       canEdit: true,

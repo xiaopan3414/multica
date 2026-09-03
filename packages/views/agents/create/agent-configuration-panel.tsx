@@ -26,6 +26,9 @@ import { ThinkingSettingField } from "../components/inspector/thinking-prop-row"
 import { ModelDropdown } from "../components/model-dropdown";
 import { RuntimePicker } from "../components/runtime-picker";
 import { SkillMultiSelect } from "../components/skill-multi-select";
+import {
+  sortWorkspaceMembersForPermissionPicker,
+} from "../components/agent-picker-order";
 
 const PERMISSION_SCOPES: AgentPermissionScope[] = [
   "private",
@@ -70,8 +73,8 @@ export function AgentConfigurationPanel({
     runtimes.find((runtime) => runtime.id === draft.runtimeId) ?? null;
   const set = <K extends keyof AgentDraft>(key: K, value: AgentDraft[K]) =>
     onChange({ ...draft, [key]: value });
-  const otherMembers = members.filter(
-    (member) => member.user_id !== currentUserId,
+  const otherMembers = sortWorkspaceMembersForPermissionPicker(
+    members.filter((member) => member.user_id !== currentUserId),
   );
   const runtimeLocked = runtimeSwitchPending || runtimeSwitchInFlight;
   const handleRuntimeSelect = (id: string) => {

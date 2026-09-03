@@ -14,6 +14,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { ActorAvatar } from "../../../common/actor-avatar";
 import { useT } from "../../../i18n";
+import { sortWorkspaceMembersForPermissionPicker } from "../agent-picker-order";
 
 export type AccessChange = {
   permission_mode: AgentPermissionMode;
@@ -127,9 +128,11 @@ export function AccessPicker({
     }
   }, [persistedScope, persistedMembers]);
 
-  const editableMembers = ownerId
-    ? members.filter((member) => member.user_id !== ownerId)
-    : members;
+  const editableMembers = sortWorkspaceMembersForPermissionPicker(
+    ownerId
+      ? members.filter((member) => member.user_id !== ownerId)
+      : members,
+  );
 
   const sameMembers =
     draftMembers.length === persistedMembers.length &&

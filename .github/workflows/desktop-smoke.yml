@@ -44,6 +44,9 @@ jobs:
         run: >-
           pnpm exec vitest run
           locales/desktop-daemon-copy.test.ts
+          agents/components/agent-picker-order.test.ts
+          agents/components/inspector/access-picker.test.tsx
+          agents/components/runtime-picker.test.tsx
 
       - name: Test Desktop CLI startup behavior
         working-directory: apps/desktop
@@ -81,7 +84,7 @@ jobs:
           )
 
           $buildInfo = @(
-            "Artifact label: feiq-v0.4.34.10",
+            "Artifact label: feiq-v0.4.34.11",
             "Source commit: $(& git rev-parse HEAD)",
             "Source version: $(& git describe --tags --match 'v[0-9]*' --always)",
             "Platform: Windows x64",
@@ -96,7 +99,7 @@ jobs:
       - name: Upload Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-windows-x64-feiq-v0.4.34.10
+          name: multica-desktop-windows-x64-feiq-v0.4.34.11
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.blockmap
