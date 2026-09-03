@@ -249,9 +249,11 @@ describe("LoginPage", () => {
     await user.type(screen.getByLabelText(/email/i), "test@example.com");
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const deliveryHint = await screen.findByRole("status");
+    expect(deliveryHint).toHaveTextContent(
       "The verification code is in your Feiq messages.",
     );
+    expect(deliveryHint).toHaveClass("text-balance", "leading-5");
     expect(screen.getByText("Enter verification code")).toBeInTheDocument();
     expect(screen.queryByText("Check your email")).not.toBeInTheDocument();
   });

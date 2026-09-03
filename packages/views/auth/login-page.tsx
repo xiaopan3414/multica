@@ -376,7 +376,7 @@ export function LoginPage({
             {verificationCodeDeliveryHint ? (
               <p
                 role="status"
-                className="w-full border-l-2 border-primary pl-3 text-left text-body text-foreground"
+                className="w-full text-balance border-l-2 border-primary pl-3 text-left text-body leading-5 text-foreground"
               >
                 {verificationCodeDeliveryHint}
               </p>

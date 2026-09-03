@@ -6,7 +6,7 @@ on:
       artifact_label:
         description: Label used for the downloadable Actions artifact
         required: true
-        default: feiq-v0.4.34.11
+        default: feiq-v0.4.34.12
 
 permissions:
   contents: read
