@@ -18,6 +18,7 @@ const ctx = vi.hoisted(() => ({
   })),
   downloadUpdate: vi.fn(),
   quitAndInstall: vi.fn(),
+  setFeedURL: vi.fn(),
   getVersion: vi.fn(() => "0.3.17"),
   userDataPath: "",
 }));
@@ -37,6 +38,7 @@ vi.mock("electron-updater", () => {
     checkForUpdates: ctx.checkForUpdates,
     downloadUpdate: ctx.downloadUpdate,
     quitAndInstall: ctx.quitAndInstall,
+    setFeedURL: ctx.setFeedURL,
   };
   return { autoUpdater };
 });

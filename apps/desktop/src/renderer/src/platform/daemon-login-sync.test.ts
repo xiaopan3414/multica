@@ -34,11 +34,17 @@ describe("syncDaemonOnLogin", () => {
   // the user's default CLI profile. #6399.
   it("pushes the target URL before syncing the token", async () => {
     const api = makeApi();
-    await syncDaemonOnLogin(api, "https://api.example.com", "tok", "user-1");
+    await syncDaemonOnLogin(
+      api,
+      "https://api.example.com",
+      "tok",
+      "user-1",
+      "lisi",
+    );
 
     expect(calls).toEqual(["setTargetApiUrl", "syncToken", "autoStart"]);
     expect(api.setTargetApiUrl).toHaveBeenCalledWith("https://api.example.com");
-    expect(api.syncToken).toHaveBeenCalledWith("tok", "user-1");
+    expect(api.syncToken).toHaveBeenCalledWith("tok", "user-1", "lisi");
   });
 
   it("awaits the target URL rather than firing it off", async () => {
@@ -55,7 +61,13 @@ describe("syncDaemonOnLogin", () => {
       ),
     });
 
-    const pending = syncDaemonOnLogin(api, "https://api.example.com", "t", "u");
+    const pending = syncDaemonOnLogin(
+      api,
+      "https://api.example.com",
+      "t",
+      "u",
+      "lisi",
+    );
     await Promise.resolve();
     expect(api.syncToken).not.toHaveBeenCalled();
 
@@ -72,7 +84,7 @@ describe("syncDaemonOnLogin", () => {
     });
 
     await expect(
-      syncDaemonOnLogin(api, "https://api.example.com", "t", "u"),
+      syncDaemonOnLogin(api, "https://api.example.com", "t", "u", "lisi"),
     ).rejects.toThrow(/not resolved/);
     expect(api.autoStart).not.toHaveBeenCalled();
   });

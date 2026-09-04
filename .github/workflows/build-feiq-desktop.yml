@@ -6,7 +6,7 @@ on:
       artifact_label:
         description: Label used for the downloadable Actions artifact
         required: true
-        default: feiq-v0.4.34.13
+        default: feiq-v0.4.34.14
 
 permissions:
   contents: read
@@ -66,10 +66,14 @@ jobs:
         working-directory: apps/desktop
         run: >-
           pnpm exec vitest run
+          src/shared/daemon-preferences.test.ts
           src/shared/runtime-config.test.ts
           src/main/runtime-config-loader.test.ts
           src/main/windows-cli-startup.test.ts
+          src/main/update-feed.test.ts
           src/main/local-directory.test.ts
+          src/renderer/src/platform/daemon-login-sync.test.ts
+          src/renderer/src/platform/desktop-machine-defaults.test.ts
           src/renderer/src/pages/login.test.tsx
           src/renderer/src/components/private-agent-working-directory.test.tsx
           src/renderer/src/components/daemon-settings-tab.test.tsx

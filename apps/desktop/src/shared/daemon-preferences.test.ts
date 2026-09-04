@@ -12,7 +12,7 @@ describe("daemon preferences", () => {
     expect(normalizeDaemonPrefs({ autoStart: false, autoStop: true })).toEqual({
       autoStart: false,
       autoStop: true,
-      launchAtLogin: false,
+      launchAtLogin: true,
       workspacesRoot: "",
     });
   });

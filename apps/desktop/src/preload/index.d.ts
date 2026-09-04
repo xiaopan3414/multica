@@ -145,7 +145,7 @@ interface DaemonAPI {
   getHostName: () => Promise<string>;
   onStatusChange: (callback: (status: DaemonStatus) => void) => () => void;
   setTargetApiUrl: (url: string) => Promise<void>;
-  syncToken: (token: string, userId: string) => Promise<void>;
+  syncToken: (token: string, userId: string, machineName: string) => Promise<void>;
   clearToken: () => Promise<void>;
   reauthenticate: (
     token: string,

@@ -3,7 +3,7 @@ import type { DaemonPrefs } from "./daemon-types";
 export const DEFAULT_DAEMON_PREFS: Readonly<DaemonPrefs> = Object.freeze({
   autoStart: true,
   autoStop: false,
-  launchAtLogin: false,
+  launchAtLogin: true,
   workspacesRoot: "",
 });
 

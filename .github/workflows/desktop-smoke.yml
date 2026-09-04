@@ -53,8 +53,16 @@ jobs:
         working-directory: apps/desktop
         run: >-
           pnpm exec vitest run
+          src/shared/daemon-preferences.test.ts
           src/main/windows-cli-startup.test.ts
+          src/main/update-feed.test.ts
+          src/renderer/src/platform/daemon-login-sync.test.ts
+          src/renderer/src/platform/desktop-machine-defaults.test.ts
           src/renderer/src/components/daemon-settings-tab.test.tsx
+
+      - name: Test Desktop update service
+        working-directory: server
+        run: go test ./cmd/desktop-update-server -count=1
 
       - name: Typecheck Desktop and shared packages
         run: pnpm typecheck
@@ -85,7 +93,7 @@ jobs:
           )
 
           $buildInfo = @(
-            "Artifact label: feiq-v0.4.34.13",
+            "Artifact label: feiq-v0.4.34.14",
             "Source commit: $(& git rev-parse HEAD)",
             "Source version: $(& git describe --tags --match 'v[0-9]*' --always)",
             "Platform: Windows x64",
@@ -97,16 +105,82 @@ jobs:
             $utf8NoBom
           )
 
+      - name: Build Desktop update service bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bundle = Join-Path $PWD "artifacts/desktop-update-service"
+          $bin = Join-Path $bundle "bin"
+          $release = Join-Path $bundle "releases/windows/x64"
+          New-Item -ItemType Directory -Force -Path $bin, $release | Out-Null
+
+          $commit = $(& git rev-parse HEAD)
+          $ldflags = "-s -w -X main.version=$commit"
+          Push-Location server
+          try {
+            $env:CGO_ENABLED = "0"
+            $env:GOOS = "linux"
+            $env:GOARCH = "amd64"
+            go build -trimpath -ldflags $ldflags -o (Join-Path $bin "multica-update-server-linux-amd64") ./cmd/desktop-update-server
+            $env:GOOS = "windows"
+            go build -trimpath -ldflags $ldflags -o (Join-Path $bin "multica-update-server-windows-x64.exe") ./cmd/desktop-update-server
+          } finally {
+            Pop-Location
+          }
+
+          Copy-Item -LiteralPath "deploy/desktop-update-service/install-linux.sh" -Destination $bundle
+          Copy-Item -LiteralPath "deploy/desktop-update-service/install-windows.ps1" -Destination $bundle
+          Copy-Item -LiteralPath "deploy/desktop-update-service/publish-windows-release.sh" -Destination $bundle
+          Copy-Item -LiteralPath "deploy/desktop-update-service/publish-windows-release.ps1" -Destination $bundle
+          Copy-Item -LiteralPath "deploy/desktop-update-service/README.zh-CN.md" -Destination $bundle
+          Copy-Item -Path "apps/desktop/dist/*.exe", "apps/desktop/dist/*.blockmap", "apps/desktop/dist/latest.yml" -Destination $release
+
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          foreach ($scriptName in @("install-linux.sh", "publish-windows-release.sh")) {
+            $scriptPath = Join-Path $bundle $scriptName
+            $content = [System.IO.File]::ReadAllText($scriptPath).Replace("`r`n", "`n")
+            [System.IO.File]::WriteAllText($scriptPath, $content, $utf8NoBom)
+          }
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $bundle "BUILD-INFO.txt"),
+            @(
+              "Artifact label: feiq-v0.4.34.14",
+              "Source commit: $commit",
+              "Update feed: http://10.0.37.30:8090/windows/x64",
+              "Service platforms: Linux amd64, Windows x64"
+            ),
+            $utf8NoBom
+          )
+          $checksumLines = foreach ($file in Get-ChildItem -LiteralPath $bundle -Recurse -File) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+            $relative = [System.IO.Path]::GetRelativePath($bundle, $file.FullName).Replace('\', '/')
+            "$hash  $relative"
+          }
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $bundle "SHA256SUMS.txt"),
+            $checksumLines,
+            $utf8NoBom
+          )
+
       - name: Upload Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-windows-x64-feiq-v0.4.34.13
+          name: multica-desktop-windows-x64-feiq-v0.4.34.14
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest*.yml
             apps/desktop/dist/SHA256SUMS-windows-x64.txt
             apps/desktop/dist/BUILD-INFO-windows-x64.txt
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Desktop update service artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multica-desktop-update-service-feiq-v0.4.34.14
+          path: artifacts/desktop-update-service/
           compression-level: 0
           retention-days: 14
           if-no-files-found: error

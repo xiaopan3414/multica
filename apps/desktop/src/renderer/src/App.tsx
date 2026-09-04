@@ -29,6 +29,11 @@ import { DesktopClientUsageReporter } from "./platform/client-usage-reporter";
 import { DiagnosticRouteReporter } from "./platform/diagnostic-route-reporter";
 import { flushFreezeBreadcrumb } from "./freeze-flush";
 import { DesktopAuthSessionBridge } from "./platform/auth-session-bridge";
+import { useDesktopRuntimeContext } from "./components/use-desktop-runtime-context";
+import {
+  machineNameFromEmail,
+  syncDesktopMachineDefaultsWithRetry,
+} from "./platform/desktop-machine-defaults";
 
 // BCP-47 region tags for the <html lang> attribute, mirroring
 // apps/web/app/layout.tsx HTML_LANG. index.html ships a static lang="en";
@@ -171,6 +176,7 @@ function AppContent() {
           runtimeConfig.apiUrl,
           token,
           userId,
+          machineNameFromEmail(user.email),
         );
       } catch (err) {
         console.error("Failed to sync daemon on login", err);
@@ -196,6 +202,55 @@ function AppContent() {
   });
   const wsCount = workspaces.length;
   const hasOnboarded = useHasOnboarded();
+  const { localDaemonId } = useDesktopRuntimeContext();
+
+  const machineDefaultsSyncKey =
+    user && runtimeConfig && localDaemonId && workspaceListReady
+      ? [
+          runtimeConfig.apiUrl,
+          user.id,
+          user.email,
+          localDaemonId,
+          ...workspaces.map((workspace) => workspace.id).sort(),
+        ].join("|")
+      : null;
+  const machineDefaultsSyncRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!machineDefaultsSyncKey) {
+      machineDefaultsSyncRef.current = null;
+      return;
+    }
+    if (
+      !user ||
+      !runtimeConfig ||
+      !localDaemonId ||
+      workspaces.length === 0 ||
+      machineDefaultsSyncRef.current === machineDefaultsSyncKey
+    ) {
+      return;
+    }
+
+    machineDefaultsSyncRef.current = machineDefaultsSyncKey;
+    void syncDesktopMachineDefaultsWithRetry({
+      api,
+      storage: localStorage,
+      apiUrl: runtimeConfig.apiUrl,
+      userId: user.id,
+      email: user.email,
+      daemonId: localDaemonId,
+      workspaces,
+    }).catch((error) => {
+      machineDefaultsSyncRef.current = null;
+      console.error("Failed to apply Desktop machine defaults", error);
+    });
+  }, [
+    localDaemonId,
+    machineDefaultsSyncKey,
+    runtimeConfig,
+    user,
+    workspaces,
+  ]);
 
   // Bridge local daemon IPC status into the runtimes cache so this user's
   // own daemon flips to offline/online sub-second instead of waiting on the

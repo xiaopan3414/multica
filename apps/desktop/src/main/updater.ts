@@ -10,12 +10,14 @@ import {
   saveUpdaterPreferences,
   updaterPreferencesPath,
 } from "./updater-preferences";
+import { configureDesktopUpdateFeed } from "./update-feed";
 
 // Silent background updates: electron-updater downloads on its own as soon
 // as `update-available` fires; we only surface UI when the package is fully
 // downloaded and ready to install on next quit.
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
+configureDesktopUpdateFeed(autoUpdater);
 
 // Windows arm64 ships its own update metadata channel because
 // electron-builder's `latest.yml` is not arch-suffixed on Windows — both

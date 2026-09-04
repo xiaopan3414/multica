@@ -643,8 +643,9 @@ async function mintPat(jwt: string): Promise<string> {
 /**
  * Ensure the active profile's config.json has a usable token for the daemon.
  *
- * - Input from the renderer is the user's JWT (from localStorage) plus the
- *   current user's id, so we can detect session changes.
+ * - Input from the renderer is the user's JWT (from localStorage), user id,
+ *   and email-derived machine name, so we can detect session changes and keep
+ *   the Desktop-owned CLI profile free of hostname/IP display names.
  * - If the profile already has a cached PAT (`mul_...`) AND the sidecar user
  *   id matches the caller, reuse it — minting fresh on every launch would
  *   accumulate garbage in the user's tokens page.
@@ -652,12 +653,13 @@ async function mintPat(jwt: string): Promise<string> {
  *   mint a fresh PAT, overwriting any stale cached PAT. This is the critical
  *   path: without it, a previous user's PAT would be used by a new session.
  * - If the caller happens to pass a PAT directly, write it through.
- * - When we mint fresh and a daemon is already running, restart it so the
- *   new credentials take effect (the Go daemon reads config at startup).
+ * - When credentials or the machine name change while a daemon is running,
+ *   restart it so the Go process reloads the profile config.
  */
 async function syncToken(
   tokenFromRenderer: string,
   userId: string,
+  machineName = "",
 ): Promise<void> {
   const active = await ensureActiveProfile();
   if (!active) {
@@ -667,6 +669,9 @@ async function syncToken(
     throw new Error("daemon profile is not resolved yet; token sync skipped");
   }
   const config = await readProfileConfig(active.name);
+  const normalizedMachineName = machineName.trim();
+  const deviceNameChanged =
+    normalizedMachineName !== "" && config.device_name !== normalizedMachineName;
   const previousUserId = await readProfileUserId(active.name);
   const userChanged = Boolean(previousUserId) && previousUserId !== userId;
   const sameUserWithCachedPat =
@@ -694,20 +699,20 @@ async function syncToken(
 
   config.token = finalToken;
   if (targetApiBaseUrl) config.server_url = targetApiBaseUrl;
+  if (normalizedMachineName) config.device_name = normalizedMachineName;
   await writeProfileConfig(active.name, config);
   await writeProfileUserId(active.name, userId);
 
-  // If we just rotated credentials onto a running daemon, restart it so the
-  // in-memory token in the Go process matches the new config.
-  if (userChanged) {
+  // Restart a live daemon when credentials or its display identity changed so
+  // the in-memory process matches the profile config written above.
+  if (userChanged || deviceNameChanged) {
     try {
       const existing = await fetchHealthAtPort(active.port);
       if (daemonStatusAlive(existing?.status)) {
-        // Restart whether it's "running" or still "starting" — a booting daemon
-        // already loaded the old token at startup, so it must be restarted to
-        // pick up the rotated credentials.
+        // Restart whether it is running or still starting: a booting daemon
+        // already loaded the previous profile config.
         console.log(
-          "[daemon] user switched — restarting daemon with new credentials",
+          "[daemon] identity changed — restarting daemon with updated configuration",
         );
         void restartDaemon();
       }
@@ -1395,7 +1400,8 @@ export function setupDaemonManager(
   ipcMain.handle("daemon:get-host-name", () => hostname());
   ipcMain.handle(
     "daemon:sync-token",
-    (_event, token: string, userId: string) => syncToken(token, userId),
+    (_event, token: string, userId: string, machineName: string) =>
+      syncToken(token, userId, machineName),
   );
   ipcMain.handle("daemon:clear-token", () => clearToken());
   ipcMain.handle(
