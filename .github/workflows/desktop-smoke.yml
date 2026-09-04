@@ -79,7 +79,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           $dist = Join-Path $PWD "apps/desktop/dist"
           $artifactFiles = @(Get-ChildItem -LiteralPath $dist -File | Where-Object {
-            $_.Extension -in @(".exe", ".blockmap", ".yml")
+            $_.Extension -in @(".exe", ".blockmap") -or $_.Name -like "latest*.yml"
           })
           $checksumLines = foreach ($file in $artifactFiles) {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
