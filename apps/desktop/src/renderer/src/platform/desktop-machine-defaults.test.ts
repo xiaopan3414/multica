@@ -22,6 +22,7 @@ function makeRuntime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
     custom_name: null,
     runtime_mode: "local",
     provider: "codex",
+    launch_header: "",
     status: "online",
     device_info: "10.0.0.8",
     metadata: {},
