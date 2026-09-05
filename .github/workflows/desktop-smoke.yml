@@ -93,7 +93,7 @@ jobs:
           )
 
           $buildInfo = @(
-            "Artifact label: feiq-v0.4.34.14",
+            "Artifact label: feiq-v0.4.34.15",
             "Source commit: $(& git rev-parse HEAD)",
             "Source version: $(& git describe --tags --match 'v[0-9]*' --always)",
             "Platform: Windows x64",
@@ -144,7 +144,7 @@ jobs:
           [System.IO.File]::WriteAllLines(
             (Join-Path $bundle "BUILD-INFO.txt"),
             @(
-              "Artifact label: feiq-v0.4.34.14",
+              "Artifact label: feiq-v0.4.34.15",
               "Source commit: $commit",
               "Update feed: http://10.0.37.30:8090/windows/x64",
               "Service platforms: Linux amd64, Windows x64"
@@ -165,7 +165,7 @@ jobs:
       - name: Upload Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-windows-x64-feiq-v0.4.34.14
+          name: multica-desktop-windows-x64-feiq-v0.4.34.15
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.blockmap
@@ -179,7 +179,7 @@ jobs:
       - name: Upload Desktop update service artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-update-service-feiq-v0.4.34.14
+          name: multica-desktop-update-service-feiq-v0.4.34.15
           path: artifacts/desktop-update-service/
           compression-level: 0
           retention-days: 14
