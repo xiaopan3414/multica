@@ -372,6 +372,7 @@ export function AgentOwnerDelegationControl({
   onCheckedChange: (checked: boolean) => void;
 }) {
   const { t } = useT("agents");
+  const checkboxId = useId();
   const descriptionId = useId();
   const label = t(($) => $.creation_studio.owner_delegation.title, {
     name: candidate.name,
@@ -379,24 +380,30 @@ export function AgentOwnerDelegationControl({
 
   return (
     <div className="border-t px-4 py-3">
-      <label
+      <div
         className={cn(
           "flex min-h-11 cursor-pointer items-start gap-3 rounded-md py-1",
           disabled && "cursor-not-allowed opacity-60",
         )}
       >
         <Checkbox
+          id={checkboxId}
           className="mt-0.5 shrink-0"
           checked={checked}
           disabled={disabled}
-          aria-label={label}
           aria-describedby={descriptionId}
           onCheckedChange={(value) => onCheckedChange(value === true)}
         />
         <span className="min-w-0">
-          <span className="block break-words text-body font-medium">
+          <label
+            htmlFor={checkboxId}
+            className={cn(
+              "block break-words text-body font-medium",
+              disabled ? "cursor-not-allowed" : "cursor-pointer",
+            )}
+          >
             {label}
-          </span>
+          </label>
           <span
             id={descriptionId}
             className="mt-0.5 block break-words text-caption leading-5 text-muted-foreground"
@@ -404,7 +411,7 @@ export function AgentOwnerDelegationControl({
             {t(($) => $.creation_studio.owner_delegation.description)}
           </span>
         </span>
-      </label>
+      </div>
     </div>
   );
 }
