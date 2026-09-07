@@ -339,6 +339,12 @@
     },
     "thinking_label": "Thinking",
     "speed_label": "Speed",
+    "owner_delegation": {
+      "title": "Assign agent ownership to {{name}}",
+      "description": "They will own this agent, and its tasks will run on their machine.",
+      "private_access_title": "Only {{name}}",
+      "private_access_description": "Only the agent owner, {{name}}, can run it."
+    },
     "access": {
       "private": {
         "title": "Only me",

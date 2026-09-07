@@ -128,6 +128,7 @@ describe("useCreateAgentSubmit cache handoff", () => {
             runtimeId: CREATED_AGENT.runtime_id,
           },
           runtimeId: CREATED_AGENT.runtime_id,
+          ownerId: "runtime-owner",
           squadId: null,
         }),
       { wrapper: wrapper(queryClient) },
@@ -142,6 +143,9 @@ describe("useCreateAgentSubmit cache handoff", () => {
       list: [CREATED_AGENT],
       detail: CREATED_AGENT,
     });
+    expect(mockCreateAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ owner_id: "runtime-owner" }),
+    );
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: workspaceKeys.agents("ws-1"),
     });

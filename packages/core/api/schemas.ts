@@ -1924,6 +1924,7 @@ export const StoredAgentDraftSchema = z.object({
   description: z.string().catch(""),
   instructions: z.string().catch(""),
   avatar_url: z.string().nullable().catch(null),
+  owner_id: z.string().nullable().catch(null),
   model: z.string().catch(""),
   thinking_level: z.string().catch(""),
   service_tier: z.string().catch(""),

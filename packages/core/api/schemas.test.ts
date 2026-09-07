@@ -55,6 +55,7 @@ import {
   SquadListSchema,
   SquadSchema,
   SourceContextPreviewSchema,
+  StoredAgentDraftSchema,
   TimelineEntriesSchema,
   UserSchema,
   PluginInstallationSchema,
@@ -72,6 +73,16 @@ import {
   EMPTY_ISSUE_STATUS_ENTRY,
 } from "./schemas";
 import { parseWithFallback } from "./schema";
+
+describe("StoredAgentDraftSchema", () => {
+  it("restores owner delegation from new drafts and defaults older drafts safely", () => {
+    expect(StoredAgentDraftSchema.parse({}).owner_id).toBeNull();
+    expect(
+      StoredAgentDraftSchema.parse({ owner_id: "runtime-owner" }).owner_id,
+    ).toBe("runtime-owner");
+    expect(StoredAgentDraftSchema.parse({ owner_id: 42 }).owner_id).toBeNull();
+  });
+});
 
 const baseIssue = {
   id: "11111111-1111-1111-1111-111111111111",

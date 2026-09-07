@@ -884,6 +884,12 @@
     },
     "thinking_label": "思考",
     "speed_label": "速度",
+    "owner_delegation": {
+      "title": "エージェントの所有者を{{name}}にする",
+      "description": "相手がこのエージェントの所有者になり、タスクは相手のマシンで実行されます。",
+      "private_access_title": "{{name}}のみ",
+      "private_access_description": "エージェントの所有者である{{name}}のみが実行できます。"
+    },
     "access": {
       "private": {
         "title": "自分のみ",

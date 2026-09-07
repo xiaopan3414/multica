@@ -230,6 +230,193 @@ func TestCreateAgent_AllowsPublicRuntimeForPlainMember(t *testing.T) {
 	}
 }
 
+func TestCreateAgent_WorkspaceOwnerDelegatesOwnerToPublicRuntimeOwner(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	runtimeID, runtimeOwnerID, _ := runtimeVisibilityFixture(t)
+	ctx := context.Background()
+	if _, err := testPool.Exec(ctx,
+		`UPDATE agent_runtime SET visibility = 'public' WHERE id = $1`, runtimeID,
+	); err != nil {
+		t.Fatalf("make runtime public: %v", err)
+	}
+
+	body := map[string]any{
+		"name":            "delegated-owner-" + runtimeID,
+		"description":     "",
+		"runtime_id":      runtimeID,
+		"owner_id":        runtimeOwnerID,
+		"permission_mode": "public_to",
+		"invocation_targets": []map[string]any{
+			{"target_type": "workspace"},
+		},
+		"max_concurrent_tasks": 1,
+	}
+	w := httptest.NewRecorder()
+	testHandler.CreateAgent(w, newRequest(http.MethodPost, "/api/agents", body))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("CreateAgent as workspace owner with delegated owner: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var created AgentResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode CreateAgent response: %v", err)
+	}
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM agent_invocation_target WHERE agent_id = $1`, created.ID)
+		testPool.Exec(context.Background(), `DELETE FROM agent WHERE id = $1`, created.ID)
+	})
+	if created.OwnerID == nil || *created.OwnerID != runtimeOwnerID {
+		t.Fatalf("response owner_id = %v, want %s", created.OwnerID, runtimeOwnerID)
+	}
+
+	var persistedOwnerID, targetCreatedBy string
+	if err := testPool.QueryRow(ctx, `
+		SELECT a.owner_id, ait.created_by
+		FROM agent a
+		JOIN agent_invocation_target ait ON ait.agent_id = a.id
+		WHERE a.id = $1 AND ait.target_type = 'workspace'
+	`, created.ID).Scan(&persistedOwnerID, &targetCreatedBy); err != nil {
+		t.Fatalf("read delegated agent ownership: %v", err)
+	}
+	if persistedOwnerID != runtimeOwnerID {
+		t.Fatalf("persisted owner_id = %s, want runtime owner %s", persistedOwnerID, runtimeOwnerID)
+	}
+	if targetCreatedBy != testUserID {
+		t.Fatalf("invocation target created_by = %s, want requester %s", targetCreatedBy, testUserID)
+	}
+}
+
+func TestCreateAgent_RejectsDelegatedOwnerForNonWorkspaceOwner(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	runtimeID, runtimeOwnerID, plainMemberID := runtimeVisibilityFixture(t)
+	ctx := context.Background()
+	if _, err := testPool.Exec(ctx,
+		`UPDATE agent_runtime SET visibility = 'public' WHERE id = $1`, runtimeID,
+	); err != nil {
+		t.Fatalf("make runtime public: %v", err)
+	}
+
+	createAs := func(userID, name string) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		testHandler.CreateAgent(w, newRequestAs(userID, http.MethodPost, "/api/agents", map[string]any{
+			"name":                 name,
+			"description":          "",
+			"runtime_id":           runtimeID,
+			"owner_id":             runtimeOwnerID,
+			"visibility":           "private",
+			"max_concurrent_tasks": 1,
+		}))
+		return w
+	}
+
+	w := createAs(plainMemberID, "member-delegated-owner-"+runtimeID)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("CreateAgent delegation as member: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if _, err := testPool.Exec(ctx, `UPDATE member SET role = 'admin' WHERE workspace_id = $1 AND user_id = $2`, testWorkspaceID, plainMemberID); err != nil {
+		t.Fatalf("promote member to admin: %v", err)
+	}
+	w = createAs(plainMemberID, "admin-delegated-owner-"+runtimeID)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("CreateAgent delegation as admin: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgent_RejectsDelegatedOwnerThatDoesNotOwnRuntime(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	runtimeID, _, plainMemberID := runtimeVisibilityFixture(t)
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE agent_runtime SET visibility = 'public' WHERE id = $1`, runtimeID,
+	); err != nil {
+		t.Fatalf("make runtime public: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	testHandler.CreateAgent(w, newRequest(http.MethodPost, "/api/agents", map[string]any{
+		"name":                 "mismatched-delegated-owner-" + runtimeID,
+		"description":          "",
+		"runtime_id":           runtimeID,
+		"owner_id":             plainMemberID,
+		"visibility":           "private",
+		"max_concurrent_tasks": 1,
+	}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("CreateAgent with non-runtime owner: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgent_RejectsDelegatedOwnerWhoIsNotWorkspaceMember(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	runtimeID, runtimeOwnerID, _ := runtimeVisibilityFixture(t)
+	ctx := context.Background()
+	if _, err := testPool.Exec(ctx,
+		`UPDATE agent_runtime SET visibility = 'public' WHERE id = $1`, runtimeID,
+	); err != nil {
+		t.Fatalf("make runtime public: %v", err)
+	}
+	if _, err := testPool.Exec(ctx,
+		`DELETE FROM member WHERE workspace_id = $1 AND user_id = $2`, testWorkspaceID, runtimeOwnerID,
+	); err != nil {
+		t.Fatalf("remove runtime owner from workspace: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	testHandler.CreateAgent(w, newRequest(http.MethodPost, "/api/agents", map[string]any{
+		"name":                 "nonmember-delegated-owner-" + runtimeID,
+		"description":          "",
+		"runtime_id":           runtimeID,
+		"owner_id":             runtimeOwnerID,
+		"visibility":           "private",
+		"max_concurrent_tasks": 1,
+	}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("CreateAgent with non-member runtime owner: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgent_RejectsDelegatedOwnerForAgentActor(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	runtimeID, runtimeOwnerID, _ := runtimeVisibilityFixture(t)
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE agent_runtime SET visibility = 'public' WHERE id = $1`, runtimeID,
+	); err != nil {
+		t.Fatalf("make runtime public: %v", err)
+	}
+
+	req := newRequest(http.MethodPost, "/api/agents", map[string]any{
+		"name":                 "agent-actor-delegated-owner-" + runtimeID,
+		"description":          "",
+		"runtime_id":           runtimeID,
+		"owner_id":             runtimeOwnerID,
+		"visibility":           "private",
+		"max_concurrent_tasks": 1,
+	})
+	req.Header.Set("X-Actor-Source", "task_token")
+	req.Header.Set("X-Agent-ID", runtimeID)
+	w := httptest.NewRecorder()
+	testHandler.CreateAgent(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("CreateAgent delegation as agent actor: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // TestUpdateAgent_RejectsRebindToPrivateRuntime is the regression for the
 // "update can bypass create" backdoor — without this gate a plain member
 // could create an agent on a public runtime, then re-bind it onto someone

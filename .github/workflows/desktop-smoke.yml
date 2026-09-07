@@ -39,6 +39,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Test agent owner delegation core
+        working-directory: packages/core
+        run: >-
+          pnpm exec vitest run
+          agents/draft.test.ts
+          agents/stored-draft.test.ts
+          api/schemas.test.ts
+
       - name: Test customized shared views
         working-directory: packages/views
         run: >-
@@ -48,6 +56,8 @@ jobs:
           agents/components/agent-picker-order.test.ts
           agents/components/inspector/access-picker.test.tsx
           agents/components/runtime-picker.test.tsx
+          agents/create/create-agent-ui.test.ts
+          agents/create/use-create-agent-submit.test.tsx
 
       - name: Test Desktop CLI startup behavior
         working-directory: apps/desktop
@@ -93,7 +103,7 @@ jobs:
           )
 
           $buildInfo = @(
-            "Artifact label: feiq-v0.4.34.15",
+            "Artifact label: feiq-v0.4.34.16",
             "Source commit: $(& git rev-parse HEAD)",
             "Source version: $(& git describe --tags --match 'v[0-9]*' --always)",
             "Platform: Windows x64",
@@ -144,7 +154,7 @@ jobs:
           [System.IO.File]::WriteAllLines(
             (Join-Path $bundle "BUILD-INFO.txt"),
             @(
-              "Artifact label: feiq-v0.4.34.15",
+              "Artifact label: feiq-v0.4.34.16",
               "Source commit: $commit",
               "Update feed: http://10.0.37.30:8090/windows/x64",
               "Service platforms: Linux amd64, Windows x64"
@@ -165,7 +175,7 @@ jobs:
       - name: Upload Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-windows-x64-feiq-v0.4.34.15
+          name: multica-desktop-windows-x64-feiq-v0.4.34.16
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.blockmap
@@ -179,7 +189,7 @@ jobs:
       - name: Upload Desktop update service artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-update-service-feiq-v0.4.34.15
+          name: multica-desktop-update-service-feiq-v0.4.34.16
           path: artifacts/desktop-update-service/
           compression-level: 0
           retention-days: 14

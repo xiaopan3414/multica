@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import {
   AGENT_DESCRIPTION_MAX_LENGTH,
   applyDraftModelChange,
   applyDraftRuntimeChange,
+  delegatedAgentOwnerCandidate,
   type AgentDraft,
   type AgentPermissionScope,
 } from "@multica/core/agents";
@@ -71,10 +72,19 @@ export function AgentConfigurationPanel({
   const { t } = useT("agents");
   const selectedRuntime =
     runtimes.find((runtime) => runtime.id === draft.runtimeId) ?? null;
+  const ownerCandidate = delegatedAgentOwnerCandidate({
+    currentUserId,
+    members,
+    runtime: selectedRuntime,
+  });
+  const delegatesOwner = draft.ownerId === ownerCandidate?.user_id;
+  const effectiveOwnerId = delegatesOwner && ownerCandidate
+    ? ownerCandidate.user_id
+    : currentUserId;
   const set = <K extends keyof AgentDraft>(key: K, value: AgentDraft[K]) =>
     onChange({ ...draft, [key]: value });
   const otherMembers = sortWorkspaceMembersForPermissionPicker(
-    members.filter((member) => member.user_id !== currentUserId),
+    members.filter((member) => member.user_id !== effectiveOwnerId),
   );
   const runtimeLocked = runtimeSwitchPending || runtimeSwitchInFlight;
   const handleRuntimeSelect = (id: string) => {
@@ -87,6 +97,14 @@ export function AgentConfigurationPanel({
     // overrides — on runtime change so the new runtime resolves its own
     // defaults instead of stale values.
     onChange(applyDraftRuntimeChange(draft, id));
+  };
+  const handleOwnerDelegationChange = (checked: boolean) => {
+    if (!ownerCandidate) return;
+    const ownerId = checked ? ownerCandidate.user_id : null;
+    const nextMemberIds = new Set(draft.memberIds);
+    const nextEffectiveOwnerId = ownerId ?? currentUserId;
+    if (nextEffectiveOwnerId) nextMemberIds.delete(nextEffectiveOwnerId);
+    onChange({ ...draft, ownerId, memberIds: nextMemberIds });
   };
 
   return (
@@ -219,6 +237,14 @@ export function AgentConfigurationPanel({
               disabled={!selectedRuntime || runtimeSwitchInFlight}
             />
           </div>
+          {ownerCandidate ? (
+            <AgentOwnerDelegationControl
+              candidate={ownerCandidate}
+              checked={delegatesOwner}
+              disabled={runtimeLocked}
+              onCheckedChange={handleOwnerDelegationChange}
+            />
+          ) : null}
           {/* Both fields fail closed: they render only when the exact selected
               model's live catalog advertises the capability (or a value is
               already set and needs clearing), so an offline runtime, a failed
@@ -269,10 +295,24 @@ export function AgentConfigurationPanel({
                 </span>
                 <span className="min-w-0">
                   <span className="block text-body font-medium">
-                    {t(($) => $.creation_studio.access[scope].title)}
+                    {scope === "private" && ownerCandidate && delegatesOwner
+                      ? t(
+                          ($) =>
+                            $.creation_studio.owner_delegation
+                              .private_access_title,
+                          { name: ownerCandidate.name },
+                        )
+                      : t(($) => $.creation_studio.access[scope].title)}
                   </span>
                   <span className="mt-0.5 block text-caption leading-5 text-muted-foreground">
-                    {t(($) => $.creation_studio.access[scope].description)}
+                    {scope === "private" && ownerCandidate && delegatesOwner
+                      ? t(
+                          ($) =>
+                            $.creation_studio.owner_delegation
+                              .private_access_description,
+                          { name: ownerCandidate.name },
+                        )
+                      : t(($) => $.creation_studio.access[scope].description)}
                   </span>
                 </span>
               </button>
@@ -316,6 +356,55 @@ export function AgentConfigurationPanel({
           ) : null}
         </SettingsCard>
       </SettingsSection>
+    </div>
+  );
+}
+
+export function AgentOwnerDelegationControl({
+  candidate,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  candidate: MemberWithUser;
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  const { t } = useT("agents");
+  const descriptionId = useId();
+  const label = t(($) => $.creation_studio.owner_delegation.title, {
+    name: candidate.name,
+  });
+
+  return (
+    <div className="border-t px-4 py-3">
+      <label
+        className={cn(
+          "flex min-h-11 cursor-pointer items-start gap-3 rounded-md py-1",
+          disabled && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Checkbox
+          className="mt-0.5 shrink-0"
+          checked={checked}
+          disabled={disabled}
+          aria-label={label}
+          aria-describedby={descriptionId}
+          onCheckedChange={(value) => onCheckedChange(value === true)}
+        />
+        <span className="min-w-0">
+          <span className="block break-words text-body font-medium">
+            {label}
+          </span>
+          <span
+            id={descriptionId}
+            className="mt-0.5 block break-words text-caption leading-5 text-muted-foreground"
+          >
+            {t(($) => $.creation_studio.owner_delegation.description)}
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

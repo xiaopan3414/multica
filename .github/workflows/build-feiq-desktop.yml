@@ -6,7 +6,7 @@ on:
       artifact_label:
         description: Label used for the downloadable Actions artifact
         required: true
-        default: feiq-v0.4.34.15
+        default: feiq-v0.4.34.16
 
 permissions:
   contents: read
@@ -44,7 +44,7 @@ jobs:
 
       - name: Test deployment-driven UI configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts agents/draft.test.ts agents/stored-draft.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
 
       - name: Test customized shared views
         working-directory: packages/views
@@ -61,6 +61,8 @@ jobs:
           agents/components/agent-picker-order.test.ts
           agents/components/inspector/access-picker.test.tsx
           agents/components/runtime-picker.test.tsx
+          agents/create/create-agent-ui.test.ts
+          agents/create/use-create-agent-submit.test.tsx
 
       - name: Test Desktop runtime configuration
         working-directory: apps/desktop

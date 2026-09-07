@@ -330,6 +330,12 @@
     },
     "thinking_label": "思考",
     "speed_label": "速度",
+    "owner_delegation": {
+      "title": "将智能体归属给 {{name}}",
+      "description": "对方将拥有此智能体；任务会在其机器上运行。",
+      "private_access_title": "仅 {{name}}",
+      "private_access_description": "只有智能体所有者 {{name}} 可以运行。"
+    },
     "access": {
       "private": {
         "title": "仅自己",

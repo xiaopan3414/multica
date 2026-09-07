@@ -4,6 +4,7 @@ import type {
   AgentInvocationTargetInput,
   AgentPermissionScope,
   CreateAgentRequest,
+  MemberWithUser,
   RuntimeDevice,
 } from "../types";
 import {
@@ -27,6 +28,8 @@ export interface AgentDraft {
   instructions: string;
   avatarUrl: string | null;
   runtimeId: string;
+  /** Explicit runtime-owner delegation requested by a workspace owner. */
+  ownerId: string | null;
   model: string;
   /** Runtime-native reasoning/effort token, scoped to `model`. */
   thinkingLevel: string;
@@ -45,6 +48,7 @@ export const EMPTY_AGENT_DRAFT: AgentDraft = {
   instructions: "",
   avatarUrl: null,
   runtimeId: "",
+  ownerId: null,
   model: "",
   thinkingLevel: "",
   serviceTier: "",
@@ -70,6 +74,7 @@ export function applyDraftRuntimeChange(
   return {
     ...draft,
     runtimeId,
+    ownerId: null,
     model: "",
     thinkingLevel: "",
     serviceTier: "",
@@ -93,6 +98,30 @@ export function applyDraftModelChange(
  */
 export function isDraftDescriptionWithinLimit(description: string): boolean {
   return [...description].length <= AGENT_DESCRIPTION_MAX_LENGTH;
+}
+
+/**
+ * Finds the only user a workspace owner may assign a newly created agent to:
+ * the owner of another member's selected public runtime. Returning the member
+ * keeps the UI label and the request validation on the same permission rule.
+ */
+export function delegatedAgentOwnerCandidate(options: {
+  currentUserId: string | null;
+  members: MemberWithUser[];
+  runtime: RuntimeDevice | null;
+}): MemberWithUser | null {
+  const { currentUserId, members, runtime } = options;
+  if (!currentUserId || !runtime?.owner_id) return null;
+  if (runtime.visibility !== "public" || runtime.owner_id === currentUserId) {
+    return null;
+  }
+  const currentMember = members.find(
+    (member) => member.user_id === currentUserId,
+  );
+  if (currentMember?.role !== "owner") return null;
+  return (
+    members.find((member) => member.user_id === runtime.owner_id) ?? null
+  );
 }
 
 export function buildInvocationTargets(
@@ -207,11 +236,13 @@ export function buildDuplicateDraft(
 export function buildCreateAgentRequest(options: {
   draft: AgentDraft;
   runtimeId: string;
+  /** Already validated against the selected runtime and workspace members. */
+  ownerId?: string | null;
   /** Creation-source attribution for the `agent_created` analytics event. */
   template?: string;
   duplicateSource?: Agent | null;
 }): CreateAgentRequest {
-  const { draft, runtimeId, template, duplicateSource } = options;
+  const { draft, runtimeId, ownerId, template, duplicateSource } = options;
   const request: CreateAgentRequest = {
     name: draft.name.trim(),
     description: draft.description.trim(),
@@ -227,6 +258,7 @@ export function buildCreateAgentRequest(options: {
     skill_ids: [...draft.skillIds],
     template,
   };
+  if (ownerId) request.owner_id = ownerId;
   if (duplicateSource) {
     if (duplicateSource.custom_args.length > 0) {
       request.custom_args = duplicateSource.custom_args;

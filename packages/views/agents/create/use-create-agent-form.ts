@@ -10,6 +10,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import {
   EMPTY_AGENT_DRAFT,
+  delegatedAgentOwnerCandidate,
   isDraftDescriptionWithinLimit,
   type AgentDraft,
 } from "@multica/core/agents";
@@ -40,6 +41,8 @@ interface CreateAgentForm {
   members: MemberWithUser[];
   workspaceSkills: SkillSummary[];
   currentUserId: string | null;
+  /** Delegated owner after re-validating the persisted choice against catalogs. */
+  delegatedOwnerId: string | null;
   /** Every non-name precondition the create button depends on. */
   draftReady: boolean;
 }
@@ -96,6 +99,17 @@ export function useCreateAgentForm(options?: {
   );
   const selectedRuntime =
     runtimes.find((runtime) => runtime.id === draft.runtimeId) ?? null;
+  const ownerCandidate = useMemo(
+    () =>
+      delegatedAgentOwnerCandidate({
+        currentUserId,
+        members,
+        runtime: selectedRuntime,
+      }),
+    [currentUserId, members, selectedRuntime],
+  );
+  const delegatedOwnerId =
+    draft.ownerId === ownerCandidate?.user_id ? draft.ownerId : null;
 
   // Seeds the picker so a draft is submittable without a manual selection.
   // Only fills an empty slot: once the draft names a runtime — chosen by the
@@ -131,6 +145,7 @@ export function useCreateAgentForm(options?: {
     members,
     workspaceSkills,
     currentUserId,
+    delegatedOwnerId,
     draftReady:
       selectedRuntime != null &&
       isRuntimeUsableForUser(selectedRuntime, currentUserId) &&

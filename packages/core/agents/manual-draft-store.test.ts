@@ -89,6 +89,7 @@ describe("manual agent drafts", () => {
     ["description", { description: "Ships carefully" }],
     ["instructions", { instructions: "Be careful" }],
     ["avatar", { avatarUrl: "🚀" }],
+    ["delegated owner", { ownerId: "runtime-owner" }],
     ["model", { model: "gpt-5.6-sol" }],
     ["thinking level", { thinkingLevel: "high" }],
     ["service tier", { serviceTier: "priority" }],

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { Agent, RuntimeDevice } from "../types";
+import type { Agent, MemberWithUser, RuntimeDevice } from "../types";
 import {
   applyDraftModelChange,
   applyDraftRuntimeChange,
   buildCreateAgentRequest,
   buildDuplicateDraft,
   buildInvocationTargets,
+  delegatedAgentOwnerCandidate,
   deriveDuplicateAccess,
   isDraftDescriptionWithinLimit,
   type AgentDraft,
@@ -17,6 +18,7 @@ const draft = (): AgentDraft => ({
   instructions: "Old instructions",
   avatarUrl: null,
   runtimeId: "runtime-1",
+  ownerId: null,
   model: "model-1",
   thinkingLevel: "",
   serviceTier: "",
@@ -41,6 +43,20 @@ const OTHER_RUNTIME: RuntimeDevice = {
   id: "runtime-2",
   name: "Spare laptop",
 } as RuntimeDevice;
+
+const member = (
+  userId: string,
+  role: MemberWithUser["role"],
+): MemberWithUser => ({
+  id: `member-${userId}`,
+  workspace_id: "ws-1",
+  user_id: userId,
+  role,
+  created_at: "2026-07-28T00:00:00Z",
+  name: userId,
+  email: `${userId}@example.com`,
+  avatar_url: null,
+});
 
 const sourceAgent = (overrides: Partial<Agent> = {}): Agent =>
   ({
@@ -99,6 +115,94 @@ describe("duplicate access", () => {
         invocation_targets: [{ target_type: "workspace", target_id: null }],
       }).permissionScope,
     ).toBe("workspace");
+  });
+});
+
+describe("delegated agent ownership", () => {
+  const workspaceOwner = member("workspace-owner", "owner");
+  const runtimeOwner = member("runtime-owner", "member");
+  const members = [workspaceOwner, runtimeOwner];
+  const publicMemberRuntime = {
+    ...CODEX_RUNTIME,
+    owner_id: runtimeOwner.user_id,
+    visibility: "public",
+  } as RuntimeDevice;
+  const deniedCases: Array<[string, MemberWithUser, RuntimeDevice]> = [
+    [
+      "workspace admin",
+      member("workspace-owner", "admin"),
+      publicMemberRuntime,
+    ],
+    [
+      "workspace member",
+      member("workspace-owner", "member"),
+      publicMemberRuntime,
+    ],
+    [
+      "private runtime",
+      workspaceOwner,
+      { ...publicMemberRuntime, visibility: "private" } as RuntimeDevice,
+    ],
+    [
+      "owner's own runtime",
+      workspaceOwner,
+      {
+        ...publicMemberRuntime,
+        owner_id: workspaceOwner.user_id,
+      } as RuntimeDevice,
+    ],
+  ];
+
+  it("offers the selected public runtime owner to the workspace owner", () => {
+    expect(
+      delegatedAgentOwnerCandidate({
+        currentUserId: workspaceOwner.user_id,
+        members,
+        runtime: publicMemberRuntime,
+      }),
+    ).toEqual(runtimeOwner);
+  });
+
+  it.each(deniedCases)(
+    "does not offer delegation for a %s",
+    (_label, currentMember, runtime) => {
+      expect(
+        delegatedAgentOwnerCandidate({
+          currentUserId: currentMember.user_id,
+          members: [currentMember, runtimeOwner],
+          runtime,
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it("does not offer a runtime owner who is no longer a workspace member", () => {
+    expect(
+      delegatedAgentOwnerCandidate({
+        currentUserId: workspaceOwner.user_id,
+        members: [workspaceOwner],
+        runtime: publicMemberRuntime,
+      }),
+    ).toBeNull();
+  });
+
+  it("sends a validated delegated owner in the create request", () => {
+    expect(
+      buildCreateAgentRequest({
+        draft: { ...draft(), ownerId: runtimeOwner.user_id },
+        runtimeId: publicMemberRuntime.id,
+        ownerId: runtimeOwner.user_id,
+      }).owner_id,
+    ).toBe(runtimeOwner.user_id);
+  });
+
+  it("omits owner_id when ownership is not delegated", () => {
+    expect(
+      buildCreateAgentRequest({
+        draft: draft(),
+        runtimeId: CODEX_RUNTIME.id,
+      }),
+    ).not.toHaveProperty("owner_id");
   });
 });
 
@@ -168,15 +272,17 @@ describe("agent draft execution overrides", () => {
     },
   );
 
-  it("clears model, thinking level and service tier on a runtime change", () => {
+  it("clears owner delegation and runtime-scoped overrides on a runtime change", () => {
     const current = {
       ...draft(),
+      ownerId: "runtime-owner",
       thinkingLevel: "high",
       serviceTier: "priority",
     };
 
     expect(applyDraftRuntimeChange(current, "runtime-2")).toMatchObject({
       runtimeId: "runtime-2",
+      ownerId: null,
       model: "",
       thinkingLevel: "",
       serviceTier: "",

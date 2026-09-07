@@ -81,6 +81,7 @@ export function ManualCreateAgentPage() {
   const submit = useCreateAgentSubmit({
     draft: form.draft,
     runtimeId: form.selectedRuntime?.id ?? null,
+    ownerId: form.delegatedOwnerId,
     squadId,
     duplicateSource: duplicateAgent,
     // The work is committed; leaving it stored would hand the finished agent's

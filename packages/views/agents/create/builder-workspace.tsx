@@ -162,6 +162,7 @@ export function BuilderWorkspace({
   const submit = useCreateAgentSubmit({
     draft,
     runtimeId: selectedRuntime?.id ?? null,
+    ownerId: form.delegatedOwnerId,
     squadId,
     template: "agent_builder",
     // The agent is already committed here, so builder cleanup must never turn

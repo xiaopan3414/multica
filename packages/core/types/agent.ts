@@ -627,6 +627,11 @@ export interface CreateAgentRequest {
   instructions?: string;
   avatar_url?: string;
   runtime_id: string;
+  /**
+   * Optional delegated owner. The backend accepts another user only when the
+   * caller owns the workspace and this user owns the selected public runtime.
+   */
+  owner_id?: string;
   runtime_config?: Record<string, unknown>;
   custom_env?: Record<string, string>;
   custom_args?: string[];
@@ -678,6 +683,7 @@ export interface StoredAgentDraft {
   description: string;
   instructions: string;
   avatar_url: string | null;
+  owner_id: string | null;
   model: string;
   thinking_level: string;
   service_tier: string;

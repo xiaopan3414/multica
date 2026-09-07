@@ -73,6 +73,7 @@ const baseDraft: AgentDraft = {
   instructions: "",
   avatarUrl: null,
   runtimeId: "runtime-1",
+  ownerId: null,
   model: "gpt-5.6-sol",
   thinkingLevel: "",
   serviceTier: "",

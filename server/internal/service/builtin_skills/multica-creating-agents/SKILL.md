@@ -71,9 +71,17 @@ strings. `--max-concurrent-tasks` is validated as 1–50 before the request is
 sent.
 
 The HTTP body (`CreateAgentRequest`) accepts: `name`, `description`,
-`instructions`, `avatar_url`, `runtime_id`, `runtime_config`, `custom_env`,
-`custom_args`, `model`, `thinking_level`, `service_tier`, `visibility`,
+`instructions`, `avatar_url`, `runtime_id`, `owner_id`, `runtime_config`,
+`custom_env`, `custom_args`, `model`, `thinking_level`, `service_tier`,
+`visibility`, `permission_mode`, `invocation_targets`,
 `max_concurrent_tasks`, `mcp_config`, `skill_ids`.
+
+`owner_id` is optional and defaults to the requesting user. Assigning it to
+another user is an owner-only delegation: the human caller must be the
+workspace `owner`, the selected runtime must be `public`, the target must own
+that runtime, and the target must still be a member of the workspace. Workspace
+admins and members cannot delegate ownership, and a private runtime never gains
+an administrative override.
 
 ## Copying an agent
 
@@ -118,6 +126,7 @@ multica agent copy <source-agent-id> --runtime-id <target> --model <model>  # cr
 | `instructions` | `agent.instructions` | none | daemon → provider at claim time |
 | `avatar_url` | `agent.avatar_url` | none; an explicit non-empty value is preserved, while omitted/empty creates a random `emoji:<glyph>` avatar | catalog/listing UI only — NOT the runtime prompt |
 | `runtime_id` | `agent.runtime_id` (nullable) | required at create (400) + must resolve to a runtime in this workspace | selects runtime/provider; `NULL` means unbound — see below |
+| `owner_id` | `agent.owner_id` | omitted/current caller = caller; another user requires the human workspace owner and must equal the selected public runtime's owner, who must remain a workspace member | owns agent configuration, credentials, and private access |
 | `model` | `agent.model` (nullable) | none beyond runtime support | daemon reads; empty = runtime default |
 | `thinking_level` | `agent.thinking_level` (nullable) | provider-level enum/safe-token gate; unknown literal → 400. Pi accepts only `off|minimal|low|medium|high|xhigh|max`, then the daemon checks the selected model's RPC-discovered subset. ACP runtimes that advertise an effort selector in `session/new` (currently `reasonix` and `hermes`) take the safe-token path and are checked against the discovered catalog by the daemon; that catalog covers only the model the discovery session was on, so other models show no picker until per-model probing exists. `hermes` covers two binaries — jcode advertises and applies an effort, Hermes Agent advertises none and gets no picker — so the answer there comes from the runtime's discovered catalog, not the provider name. Because that catalog is only written once a client requests a model list, a `hermes` runtime that has never been discovered is refused with a distinct "has not reported a model catalog yet" 400 rather than being assumed capable; `reasonix`, whose provider name does determine the binary, is allowed in that state. A runtime with no reasoning control at all (e.g. `copilot`, which executes outside ACP) rejects EVERY non-empty value and says so — that 400 is a capability answer, not a bad token | daemon; empty = runtime default |
 | `service_tier` | `agent.service_tier` (nullable) | Codex-only safe token; other providers reject; exact model/tier pair checked by daemon | daemon → Codex app-server; empty = local Codex config |

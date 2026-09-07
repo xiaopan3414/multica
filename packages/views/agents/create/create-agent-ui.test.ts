@@ -3,12 +3,15 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@multica/core/api";
-import type { Agent } from "@multica/core/types";
+import type { Agent, MemberWithUser } from "@multica/core/types";
 import {
   cacheAgentResponse,
   workspaceKeys,
 } from "@multica/core/workspace/queries";
-import { AgentNameField } from "./agent-configuration-panel";
+import {
+  AgentNameField,
+  AgentOwnerDelegationControl,
+} from "./agent-configuration-panel";
 import { CreateMethodChooser } from "./choose-create-method-page";
 import { CreateAgentFooter } from "./create-agent-footer";
 import { draftPreview } from "./unfinished-drafts";
@@ -42,14 +45,16 @@ vi.mock("../../i18n", () => ({
           create_and_add: string;
           creating: string;
           name_conflict: string;
+          owner_delegation: { title: string; description: string };
         };
         create_dialog: {
           name_label: string;
           name_placeholder: string;
         };
       }) => string,
-    ) =>
-      selector({
+      variables?: Record<string, string>,
+    ) => {
+      const value = selector({
         creation_studio: {
           eyebrow: "Agent creation",
           choose_title: "How would you like to start?",
@@ -70,12 +75,23 @@ vi.mock("../../i18n", () => ({
           create_and_add: "Create and add",
           creating: "Creating…",
           name_conflict: "An agent with this name already exists.",
+          owner_delegation: {
+            title: "Assign agent ownership to {{name}}",
+            description:
+              "They will own this agent, and its tasks will run on their machine.",
+          },
         },
         create_dialog: {
           name_label: "Name",
           name_placeholder: "Agent name",
         },
-      }),
+      });
+      return Object.entries(variables ?? {}).reduce(
+        (result, [key, replacement]) =>
+          result.replaceAll(`{{${key}}}`, replacement),
+        value,
+      );
+    },
   }),
 }));
 
@@ -173,6 +189,43 @@ describe("Agent creation errors", () => {
     expect(
       error.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+describe("Agent owner delegation", () => {
+  const candidate: MemberWithUser = {
+    id: "member-runtime-owner",
+    workspace_id: "ws-1",
+    user_id: "runtime-owner",
+    role: "member",
+    created_at: "2026-08-15T00:00:00Z",
+    name: "Machine Owner",
+    email: "machine-owner@example.com",
+    avatar_url: null,
+  };
+
+  it("renders an explicit labeled checkbox and reports the new state", () => {
+    const onCheckedChange = vi.fn();
+    render(
+      createElement(AgentOwnerDelegationControl, {
+        candidate,
+        checked: false,
+        disabled: false,
+        onCheckedChange,
+      }),
+    );
+
+    const checkbox = screen.getByRole("checkbox", {
+      name: "Assign agent ownership to Machine Owner",
+    });
+    expect(
+      screen.getByText(
+        "They will own this agent, and its tasks will run on their machine.",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(checkbox);
+    expect(onCheckedChange).toHaveBeenCalledWith(true);
   });
 });
 

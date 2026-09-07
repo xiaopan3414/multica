@@ -15,6 +15,7 @@ const draft = (): AgentDraft => ({
   instructions: "Old instructions",
   avatarUrl: null,
   runtimeId: "runtime-1",
+  ownerId: null,
   model: "model-1",
   thinkingLevel: "",
   serviceTier: "",

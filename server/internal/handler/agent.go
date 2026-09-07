@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
@@ -1091,6 +1092,7 @@ type CreateAgentRequest struct {
 	Instructions  string            `json:"instructions"`
 	AvatarURL     *string           `json:"avatar_url"`
 	RuntimeID     string            `json:"runtime_id"`
+	OwnerID       *string           `json:"owner_id,omitempty"`
 	RuntimeConfig any               `json:"runtime_config"`
 	CustomEnv     map[string]string `json:"custom_env"`
 	CustomArgs    []string          `json:"custom_args"`
@@ -1099,8 +1101,9 @@ type CreateAgentRequest struct {
 	// PermissionMode + InvocationTargets are the new invocation-permission
 	// inputs (MUL-3963). When permission_mode is present it is authoritative
 	// and Visibility is ignored; when absent, legacy Visibility is mapped
-	// (private -> private, workspace -> public_to+workspace target). On create
-	// only the caller can be the owner, so targets are accepted unconditionally.
+	// (private -> private, workspace -> public_to+workspace target). The create
+	// requester controls the initial targets, including a workspace owner who
+	// explicitly delegates the agent to a public runtime's owner.
 	PermissionMode     *string                    `json:"permission_mode"`
 	InvocationTargets  []AgentInvocationTargetDTO `json:"invocation_targets"`
 	MaxConcurrentTasks int32                      `json:"max_concurrent_tasks"`
@@ -1108,8 +1111,9 @@ type CreateAgentRequest struct {
 	ThinkingLevel      string                     `json:"thinking_level"`
 	ServiceTier        string                     `json:"service_tier"`
 	// ComposioToolkitAllowlist seeds the per-task overlay gate (MUL-3869). On
-	// create only the calling user can be the owner, so we accept the field
-	// unconditionally here; the cross-owner permission gate lives on PUT.
+	// create only the resulting agent owner or the workspace owner acting for a
+	// public runtime owner can choose it, so we accept the field here; the
+	// cross-owner permission gate lives on PUT.
 	// Nil = leave column NULL (no overlay). Empty slice = explicit `{}` (no
 	// overlay either, but the column reads as "configured" — distinct from
 	// "owner has never opened the integration").
@@ -1154,7 +1158,7 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ownerID, ok := requireUserID(w, r)
+	requesterID, ok := requireUserID(w, r)
 	if !ok {
 		return
 	}
@@ -1190,8 +1194,8 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve invocation permission (MUL-3963). permission_mode is
 	// authoritative when present; otherwise the legacy visibility value is
-	// mapped. On create the caller is always the owner, so targets are
-	// accepted unconditionally.
+	// mapped. The caller controls initial targets even when a workspace owner
+	// explicitly delegates the new agent to the selected runtime owner.
 	_, hasTargets := rawFields["invocation_targets"]
 	legacyVis := req.Visibility
 	perm, _, permErr := parsePermissionInput(wsUUID, req.PermissionMode, req.InvocationTargets, req.PermissionMode != nil, hasTargets, &legacyVis)
@@ -1215,6 +1219,42 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	if !canUseRuntimeForAgent(member, runtime) {
 		writeError(w, http.StatusForbidden, "this runtime is private; only its owner can create agents on it")
 		return
+	}
+
+	// By default the caller owns the new agent. A workspace owner may
+	// explicitly hand ownership to another member only when that member owns
+	// the selected public runtime. Keeping the target tied to the runtime closes
+	// the generic "create as any member" privilege-escalation path while still
+	// supporting owner-managed deployment onto a member's shared machine.
+	agentOwnerUUID := parseUUID(requesterID)
+	if req.OwnerID != nil {
+		requestedOwnerUUID, valid := parseUUIDOrBadRequest(w, *req.OwnerID, "owner_id")
+		if !valid {
+			return
+		}
+		if requestedOwnerUUID != agentOwnerUUID {
+			actorType, _ := h.resolveActor(r, requesterID, workspaceID)
+			if actorType != "member" || member.Role != "owner" {
+				writeError(w, http.StatusForbidden, "only the workspace owner can assign a new agent to another runtime owner")
+				return
+			}
+			if runtime.Visibility != "public" || runtime.OwnerID != requestedOwnerUUID {
+				writeError(w, http.StatusBadRequest, "owner_id must match the selected public runtime owner")
+				return
+			}
+			if _, err := h.Queries.GetMemberByUserAndWorkspace(r.Context(), db.GetMemberByUserAndWorkspaceParams{
+				UserID:      requestedOwnerUUID,
+				WorkspaceID: wsUUID,
+			}); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					writeError(w, http.StatusBadRequest, "owner_id must belong to this workspace")
+					return
+				}
+				writeError(w, http.StatusInternalServerError, "failed to validate agent owner")
+				return
+			}
+			agentOwnerUUID = requestedOwnerUUID
+		}
 	}
 
 	// thinking_level validation: fixed-enum providers reject unknown literals;
@@ -1328,7 +1368,7 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Visibility:               perm.legacyVisibility(),
 		PermissionMode:           perm.mode,
 		MaxConcurrentTasks:       req.MaxConcurrentTasks,
-		OwnerID:                  parseUUID(ownerID),
+		OwnerID:                  agentOwnerUUID,
 		CustomEnv:                ce,
 		CustomArgs:               ca,
 		McpConfig:                mc,
@@ -1349,7 +1389,7 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create agent: "+err.Error())
 		return
 	}
-	if err := replaceInvocationTargetsWithQueries(r.Context(), qtx, created.ID, parseUUID(ownerID), perm.targets); err != nil {
+	if err := replaceInvocationTargetsWithQueries(r.Context(), qtx, created.ID, parseUUID(requesterID), perm.targets); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save agent access")
 		return
 	}
@@ -1380,11 +1420,11 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	if err := h.enrichAgentResponseWithTargets(r.Context(), &resp, created.ID); err != nil {
 		slog.Warn("create agent: load invocation targets for response failed", append(logger.RequestAttrs(r), "error", err, "agent_id", uuidToString(created.ID))...)
 	}
-	actorType, actorID := h.resolveActor(r, ownerID, workspaceID)
+	actorType, actorID := h.resolveActor(r, requesterID, workspaceID)
 	h.publish(protocol.EventAgentCreated, workspaceID, actorType, actorID, map[string]any{"agent": broadcastAgentResponse(resp)})
 
 	obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.AgentCreated(
-		ownerID,
+		requesterID,
 		workspaceID,
 		uuidToString(created.ID),
 		runtime.Provider,

@@ -383,6 +383,7 @@ func TestCreatingAgentsSkillCoversAgentCreationContracts(t *testing.T) {
 		"multica agent skills add <agent-id> --skill-ids <skill-id> --output json",
 		"multica agent skills list <agent-id> --output json",
 		"multica agent get <agent-id> --output json",
+		"`owner_id` is optional",
 		"255",
 		"references/creating-agents-source-map.md",
 	}

@@ -884,6 +884,12 @@
     },
     "thinking_label": "추론",
     "speed_label": "속도",
+    "owner_delegation": {
+      "title": "에이전트 소유자를 {{name}}님으로 지정",
+      "description": "상대방이 이 에이전트를 소유하며 작업은 해당 사용자의 컴퓨터에서 실행됩니다.",
+      "private_access_title": "{{name}}님만",
+      "private_access_description": "에이전트 소유자인 {{name}}님만 실행할 수 있습니다."
+    },
     "access": {
       "private": {
         "title": "나만",
