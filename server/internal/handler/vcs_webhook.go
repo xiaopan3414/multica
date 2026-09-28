@@ -136,7 +136,14 @@ func (h *Handler) HandleVCSWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch provider.EventKind(r.Header) {
+	eventKind := provider.EventKind(r.Header)
+	if err := h.recordVCSWebhookDelivery(r.Context(), conn, r.Header, body, eventKind); err != nil {
+		slog.Error("vcs: record webhook delivery failed", "provider", conn.Provider, "err", err)
+		writeError(w, http.StatusInternalServerError, "failed to record webhook delivery")
+		return
+	}
+
+	switch eventKind {
 	case vcs.EventPullRequest:
 		if pr, err := provider.ParsePullRequest(body); err != nil {
 			slog.Warn("vcs: bad pull_request payload", "provider", conn.Provider, "err", err)

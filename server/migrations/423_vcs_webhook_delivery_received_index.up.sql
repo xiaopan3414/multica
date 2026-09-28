@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY vcs_webhook_delivery_connection_received_idx ON vcs_webhook_delivery (connection_id, received_at DESC);

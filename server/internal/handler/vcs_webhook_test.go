@@ -65,6 +65,7 @@ func seedVCSConnection(t *testing.T, ctx context.Context, box *secretbox.Box, pr
 func cleanupVCS(ctx context.Context, issueID string) {
 	testPool.Exec(ctx, `DELETE FROM issue_vcs_pull_request WHERE issue_id = $1`, issueID)
 	testPool.Exec(ctx, `DELETE FROM vcs_commit_status cs USING vcs_connection c WHERE cs.connection_id = c.id AND c.workspace_id = $1`, testWorkspaceID)
+	testPool.Exec(ctx, `DELETE FROM vcs_webhook_delivery WHERE workspace_id = $1`, testWorkspaceID)
 	testPool.Exec(ctx, `DELETE FROM vcs_pull_request WHERE workspace_id = $1`, testWorkspaceID)
 	testPool.Exec(ctx, `DELETE FROM vcs_connection WHERE workspace_id = $1`, testWorkspaceID)
 	if issueID != "" {

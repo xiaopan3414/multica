@@ -204,6 +204,8 @@ export type {
   ListVCSConnectionsResponse,
   ConnectVCSRequest,
   ConnectVCSResponse,
+  VCSWebhookDelivery,
+  ListVCSWebhookDeliveriesResponse,
 } from "./vcs";
 export type {
   LarkInstallation,

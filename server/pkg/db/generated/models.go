@@ -1436,6 +1436,24 @@ type VcsPullRequest struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type VcsWebhookDelivery struct {
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	ConnectionID  pgtype.UUID        `json:"connection_id"`
+	Provider      string             `json:"provider"`
+	Event         string             `json:"event"`
+	EventUuid     pgtype.Text        `json:"event_uuid"`
+	WebhookUuid   pgtype.Text        `json:"webhook_uuid"`
+	ProjectPath   pgtype.Text        `json:"project_path"`
+	Ref           pgtype.Text        `json:"ref"`
+	BeforeSha     pgtype.Text        `json:"before_sha"`
+	AfterSha      pgtype.Text        `json:"after_sha"`
+	CheckoutSha   pgtype.Text        `json:"checkout_sha"`
+	CommitCount   pgtype.Int4        `json:"commit_count"`
+	HandlerAction string             `json:"handler_action"`
+	ReceivedAt    pgtype.Timestamptz `json:"received_at"`
+}
+
 type VerificationCode struct {
 	ID        pgtype.UUID        `json:"id"`
 	Email     string             `json:"email"`

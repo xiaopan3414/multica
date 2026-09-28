@@ -757,7 +757,7 @@
     "not_configured": "Git provider integration is not configured on this server. Ask an administrator to set",
     "contact_admin": "Ask a workspace admin to connect a Git provider instance.",
     "webhook_setup_title": "Finish setup in your provider",
-    "webhook_setup_description": "Add a webhook on your repository or organisation with the URL and secret below. Forgejo/Gitea: choose the Gitea format and the Pull Request (and Commit Status) events. GitLab: paste the secret as the token and enable Merge request and Pipeline events.",
+    "webhook_setup_description": "Add a webhook on your repository or organisation with the URL and secret below. Forgejo/Gitea: choose the Gitea format and the Pull Request (and Commit Status) events. GitLab: paste the secret as the token and enable Push, Merge request, and Pipeline events.",
     "webhook_url_label": "Webhook URL",
     "webhook_secret_label": "Webhook secret",
     "webhook_secret_warning": "Copy the secret now. It is shown only once and cannot be retrieved later.",
@@ -779,7 +779,17 @@
     "rotate_confirm_action": "Regenerate",
     "rotating": "Regenerating...",
     "toast_rotated": "Webhook secret regenerated",
-    "toast_rotate_failed": "Could not regenerate webhook secret"
+    "toast_rotate_failed": "Could not regenerate webhook secret",
+    "deliveries_title": "최근 Webhook 전송",
+    "deliveries_refresh": "전송 내역 새로고침",
+    "deliveries_empty": "인증된 Webhook이 아직 수신되지 않았습니다.",
+    "deliveries_load_failed": "Webhook 전송 내역을 불러올 수 없습니다.",
+    "delivery_commits": "커밋 {{count}}개",
+    "delivery_action_mirror_pull_request": "Merge request 반영",
+    "delivery_action_mirror_ci_status": "파이프라인 상태 반영",
+    "delivery_action_record_only": "기록만",
+    "delivery_event_uuid": "이벤트 UUID: {{uuid}}",
+    "delivery_event_uuid_missing": "이벤트 UUID 없음"
   },
   "telegram": {
     "section_title": "Telegram",

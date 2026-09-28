@@ -759,7 +759,7 @@
     "not_configured": "Git provider integration is not configured on this server. Ask an administrator to set",
     "contact_admin": "Ask a workspace admin to connect a Git provider instance.",
     "webhook_setup_title": "Finish setup in your provider",
-    "webhook_setup_description": "Add a webhook on your repository or organisation with the URL and secret below. Forgejo/Gitea: choose the Gitea format and the Pull Request (and Commit Status) events. GitLab: paste the secret as the token and enable Merge request and Pipeline events.",
+    "webhook_setup_description": "Add a webhook on your repository or organisation with the URL and secret below. Forgejo/Gitea: choose the Gitea format and the Pull Request (and Commit Status) events. GitLab: paste the secret as the token and enable Push, Merge request, and Pipeline events.",
     "webhook_url_label": "Webhook URL",
     "webhook_secret_label": "Webhook secret",
     "webhook_secret_warning": "Copy the secret now. It is shown only once and cannot be retrieved later.",
@@ -781,7 +781,17 @@
     "rotate_confirm_action": "Regenerate",
     "rotating": "Regenerating...",
     "toast_rotated": "Webhook secret regenerated",
-    "toast_rotate_failed": "Could not regenerate webhook secret"
+    "toast_rotate_failed": "Could not regenerate webhook secret",
+    "deliveries_title": "Recent webhook deliveries",
+    "deliveries_refresh": "Refresh deliveries",
+    "deliveries_empty": "No authenticated webhook deliveries received yet.",
+    "deliveries_load_failed": "Could not load webhook deliveries.",
+    "delivery_commits": "{{count}} commits",
+    "delivery_action_mirror_pull_request": "Mirror merge request",
+    "delivery_action_mirror_ci_status": "Mirror pipeline status",
+    "delivery_action_record_only": "Record only",
+    "delivery_event_uuid": "Event UUID: {{uuid}}",
+    "delivery_event_uuid_missing": "No event UUID"
   },
   "lark": {
     "section_title": "Lark",

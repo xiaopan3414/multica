@@ -50,3 +50,23 @@ export interface ConnectVCSResponse extends VCSConnection {
    * afterwards (stored encrypted); reconnecting rotates it. */
   webhook_secret: string;
 }
+
+export interface VCSWebhookDelivery {
+  id: string;
+  provider: VCSProvider;
+  event: string;
+  event_uuid: string | null;
+  webhook_uuid: string | null;
+  project_path: string | null;
+  ref: string | null;
+  before_sha: string | null;
+  after_sha: string | null;
+  checkout_sha: string | null;
+  commit_count: number | null;
+  handler_action: string;
+  received_at: string;
+}
+
+export interface ListVCSWebhookDeliveriesResponse {
+  deliveries: VCSWebhookDelivery[];
+}

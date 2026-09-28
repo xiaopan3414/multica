@@ -26,10 +26,10 @@ import {
   AlertDialogTitle,
 } from "@multica/ui/components/ui/alert-dialog";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { vcsConnectionsOptions } from "@multica/core/vcs";
+import { vcsConnectionsOptions, vcsWebhookDeliveriesOptions } from "@multica/core/vcs";
 import { api } from "@multica/core/api";
 import type { ConnectVCSResponse, VCSProvider } from "@multica/core/types";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 
 const PROVIDERS: VCSProvider[] = ["forgejo", "gitea", "gitlab"];
 const PROVIDER_LABELS: Record<VCSProvider, string> = {
@@ -133,36 +133,39 @@ export function VCSTab() {
         <div className="space-y-3">
           {connections.map((c) => (
             <Card key={c.id}>
-              <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="rounded-md border bg-muted/50 p-2 text-muted-foreground shrink-0">
-                    <GitBranch className="h-4 w-4" />
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="rounded-md border bg-muted/50 p-2 text-muted-foreground shrink-0">
+                      <GitBranch className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-body font-medium break-all">
+                        {(PROVIDER_LABELS[c.provider] ?? c.provider) + " · " + c.instance_url}
+                      </p>
+                      <p className="text-caption text-muted-foreground break-all">
+                        {t(($) => $.vcs.connected_as, { login: c.account_login })}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="text-body font-medium break-all">
-                      {(PROVIDER_LABELS[c.provider] ?? c.provider) + " · " + c.instance_url}
-                    </p>
-                    <p className="text-caption text-muted-foreground break-all">
-                      {t(($) => $.vcs.connected_as, { login: c.account_login })}
-                    </p>
-                  </div>
+                  {canManage && (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRotateTarget(c.id)}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        {t(($) => $.vcs.regenerate_webhook)}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setDeleteTarget(c.id)}>
+                        <Trash2 className="h-3 w-3" />
+                        {t(($) => $.vcs.disconnect)}
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {canManage && (
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRotateTarget(c.id)}
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      {t(($) => $.vcs.regenerate_webhook)}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setDeleteTarget(c.id)}>
-                      <Trash2 className="h-3 w-3" />
-                      {t(($) => $.vcs.disconnect)}
-                    </Button>
-                  </div>
-                )}
+                <VCSWebhookDeliveries workspaceId={wsId} connectionId={c.id} />
               </CardContent>
             </Card>
           ))}
@@ -319,6 +322,107 @@ export function VCSTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function VCSWebhookDeliveries({
+  workspaceId,
+  connectionId,
+}: {
+  workspaceId: string;
+  connectionId: string;
+}) {
+  const { t } = useT("settings");
+  const locale = useLocale();
+  const { data, refetch, isFetching, isError } = useQuery(
+    vcsWebhookDeliveriesOptions(workspaceId, connectionId),
+  );
+  const deliveries = data?.deliveries ?? [];
+  const actionLabel = (action: string) => {
+    switch (action) {
+      case "mirror_pull_request":
+        return t(($) => $.vcs.delivery_action_mirror_pull_request);
+      case "mirror_ci_status":
+        return t(($) => $.vcs.delivery_action_mirror_ci_status);
+      case "record_only":
+        return t(($) => $.vcs.delivery_action_record_only);
+      default:
+        return action;
+    }
+  };
+
+  return (
+    <div className="border-t pt-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-caption font-medium">{t(($) => $.vcs.deliveries_title)}</p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => void refetch()}
+          aria-label={t(($) => $.vcs.deliveries_refresh)}
+          title={t(($) => $.vcs.deliveries_refresh)}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      {isError ? (
+        <p className="text-caption text-destructive">
+          {t(($) => $.vcs.deliveries_load_failed)}
+        </p>
+      ) : deliveries.length === 0 ? (
+        <p className="text-caption text-muted-foreground">
+          {t(($) => $.vcs.deliveries_empty)}
+        </p>
+      ) : (
+        <div className="divide-y">
+          {deliveries.map((delivery) => {
+            const receivedAt = new Date(delivery.received_at);
+            const receivedAtLabel = Number.isNaN(receivedAt.getTime())
+              ? delivery.received_at
+              : receivedAt.toLocaleString(locale);
+            return (
+              <div
+                key={delivery.id}
+                className="grid min-w-0 gap-1 py-2 text-caption sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4"
+              >
+                <div className="min-w-0 space-y-1">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="font-medium">{delivery.event}</span>
+                    {(delivery.project_path || delivery.ref) && (
+                      <span className="break-all text-muted-foreground">
+                        {[delivery.project_path, delivery.ref].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
+                    {delivery.commit_count !== null && (
+                      <span>
+                        {t(($) => $.vcs.delivery_commits, { count: delivery.commit_count })}
+                      </span>
+                    )}
+                    <span>{actionLabel(delivery.handler_action)}</span>
+                  </div>
+                  <p className="break-all font-mono text-[11px] text-muted-foreground">
+                    {delivery.event_uuid
+                      ? t(($) => $.vcs.delivery_event_uuid, { uuid: delivery.event_uuid })
+                      : t(($) => $.vcs.delivery_event_uuid_missing)}
+                  </p>
+                </div>
+                <time
+                  dateTime={delivery.received_at}
+                  className="whitespace-nowrap text-muted-foreground sm:text-right"
+                >
+                  {receivedAtLabel}
+                </time>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

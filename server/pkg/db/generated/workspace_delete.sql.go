@@ -214,6 +214,10 @@ const deleteWorkspaceConnections = `-- name: DeleteWorkspaceConnections :exec
 WITH deleted_github_installations AS (
     DELETE FROM github_installation
     WHERE github_installation.workspace_id = $1
+),
+deleted_vcs_webhook_deliveries AS (
+    DELETE FROM vcs_webhook_delivery
+    WHERE vcs_webhook_delivery.workspace_id = $1
 )
 DELETE FROM vcs_connection WHERE vcs_connection.workspace_id = $1
 `
@@ -413,6 +417,10 @@ deleted_channel_chat_contexts AS (
 ),
 deleted_vcs_commit_statuses AS (
     DELETE FROM vcs_commit_status
+    WHERE connection_id IN (SELECT id FROM ws_vcs_connections)
+),
+deleted_vcs_webhook_deliveries AS (
+    DELETE FROM vcs_webhook_delivery
     WHERE connection_id IN (SELECT id FROM ws_vcs_connections)
 ),
 deleted_channel_chat_bindings AS (

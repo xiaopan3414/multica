@@ -757,7 +757,7 @@
     "not_configured": "此服务器尚未配置 Git 代码托管集成。请管理员设置",
     "contact_admin": "请工作区管理员连接 Git 代码托管实例。",
     "webhook_setup_title": "在代码托管中完成设置",
-    "webhook_setup_description": "在仓库或组织中添加 Webhook，使用下方的地址和密钥。Forgejo/Gitea：格式选择 Gitea，事件勾选 Pull Request（及 Commit Status）。GitLab：将密钥填入 token，并启用 Merge request 与 Pipeline 事件。",
+    "webhook_setup_description": "在仓库或组织中添加 Webhook，使用下方的地址和密钥。Forgejo/Gitea：格式选择 Gitea，事件勾选 Pull Request（及 Commit Status）。GitLab：将密钥填入 token，并启用 Push、Merge request 与 Pipeline 事件。",
     "webhook_url_label": "Webhook 地址",
     "webhook_secret_label": "Webhook 密钥",
     "webhook_secret_warning": "请立即复制密钥。它只显示一次，之后无法再次获取。",
@@ -779,7 +779,17 @@
     "rotate_confirm_action": "重新生成",
     "rotating": "重新生成中…",
     "toast_rotated": "已重新生成 Webhook 密钥",
-    "toast_rotate_failed": "重新生成 Webhook 密钥失败"
+    "toast_rotate_failed": "重新生成 Webhook 密钥失败",
+    "deliveries_title": "最近收到的 Webhook",
+    "deliveries_refresh": "刷新投递记录",
+    "deliveries_empty": "尚未收到通过验证的 Webhook。",
+    "deliveries_load_failed": "无法加载 Webhook 投递记录。",
+    "delivery_commits": "{{count}} 个提交",
+    "delivery_action_mirror_pull_request": "将镜像 Merge Request",
+    "delivery_action_mirror_ci_status": "将镜像流水线状态",
+    "delivery_action_record_only": "仅记录",
+    "delivery_event_uuid": "事件 UUID：{{uuid}}",
+    "delivery_event_uuid_missing": "无事件 UUID"
   },
   "lark": {
     "section_title": "飞书",

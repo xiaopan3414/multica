@@ -167,6 +167,7 @@ import type {
   ListGitHubRepositoriesResponse,
   GitHubConnectResponse,
   ListVCSConnectionsResponse,
+  ListVCSWebhookDeliveriesResponse,
   ConnectVCSRequest,
   ConnectVCSResponse,
   ListLarkInstallationsResponse,
@@ -408,6 +409,8 @@ import {
   EMPTY_GITHUB_CONNECT_RESPONSE,
   EMPTY_LIST_GITHUB_INSTALLATIONS_RESPONSE,
   EMPTY_LIST_GITHUB_REPOSITORIES_RESPONSE,
+  ListVCSWebhookDeliveriesResponseSchema,
+  EMPTY_LIST_VCS_WEBHOOK_DELIVERIES_RESPONSE,
   RuntimeModelListRequestSchema,
   MALFORMED_RUNTIME_MODEL_LIST_REQUEST,
   SkillSchema,
@@ -4306,6 +4309,21 @@ export class ApiClient {
   // VCS integration (Forgejo / Gitea / GitLab)
   async listVCSConnections(workspaceId: string): Promise<ListVCSConnectionsResponse> {
     return this.fetch(`/api/workspaces/${workspaceId}/vcs/connections`);
+  }
+
+  async listVCSWebhookDeliveries(
+    workspaceId: string,
+    connectionId: string,
+  ): Promise<ListVCSWebhookDeliveriesResponse> {
+    const raw = await this.fetch<unknown>(
+      `/api/workspaces/${workspaceId}/vcs/connections/${connectionId}/deliveries`,
+    );
+    return parseWithFallback(
+      raw,
+      ListVCSWebhookDeliveriesResponseSchema,
+      EMPTY_LIST_VCS_WEBHOOK_DELIVERIES_RESPONSE,
+      { endpoint: "GET /api/workspaces/:id/vcs/connections/:connectionId/deliveries" },
+    );
   }
 
   async connectVCS(

@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS vcs_webhook_delivery_connection_received_idx;

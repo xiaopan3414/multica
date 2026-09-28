@@ -45,6 +45,7 @@ import type {
   GroupedIssuesResponse,
   GitHubConnectResponse,
   GitHubPullRequest,
+  ListVCSWebhookDeliveriesResponse,
   InboxItem,
   InboxWorkspaceUnread,
   Label,
@@ -3194,4 +3195,28 @@ export const EMPTY_JOIN_SHARE_LINK_RESPONSE: {
   },
   workspace_id: "",
   workspace_slug: "",
+};
+
+export const VCSWebhookDeliverySchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  event: z.string(),
+  event_uuid: z.string().nullable(),
+  webhook_uuid: z.string().nullable(),
+  project_path: z.string().nullable(),
+  ref: z.string().nullable(),
+  before_sha: z.string().nullable(),
+  after_sha: z.string().nullable(),
+  checkout_sha: z.string().nullable(),
+  commit_count: z.number().int().nullable(),
+  handler_action: z.string(),
+  received_at: z.string(),
+}).loose();
+
+export const ListVCSWebhookDeliveriesResponseSchema = z.object({
+  deliveries: z.array(VCSWebhookDeliverySchema).default([]),
+}).loose();
+
+export const EMPTY_LIST_VCS_WEBHOOK_DELIVERIES_RESPONSE: ListVCSWebhookDeliveriesResponse = {
+  deliveries: [],
 };

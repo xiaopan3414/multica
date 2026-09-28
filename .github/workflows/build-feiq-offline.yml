@@ -70,11 +70,12 @@ jobs:
         run: |
           go test ./internal/service -run '^(TestSendVerificationCodeDevLogIncludesClientIP|TestCreatingAgentsSkillCoversAgentCreationContracts)$' -count=1
           go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings|TestSendCodeResendCooldownCanBeDisabled|TestVerificationCodeLoginDomainAppliesToExistingUsers|TestAgentWorkingDirectoryAPI.*|TestClaimTaskByRuntimeCarriesSynchronizedAgentWorkingDirectory|TestCreateAgent_(WorkspaceOwnerDelegatesOwnerToPublicRuntimeOwner|RejectsDelegatedOwner.*|RejectsPrivateRuntimeForNonOwner|AllowsPublicRuntimeForPlainMember)|TestCreateChatSessionPublishesCreatedAfterCommit|TestChatSessionAgentOwnerCanReadAndContinue|TestHasPendingChatTasks_UsesChatParticipantBoundary)$' -count=1
+          go test ./internal/handler -run '^(TestExtractVCSWebhookMetadataGitLabPush|TestVCSWebhook_GitLabPushDeliveryAudit|TestVCSWebhook_InvalidGitLabTokenDoesNotAudit)$' -count=1
           go test ./cmd/server -run '^(TestRegisterListeners_ChatSessionCreated.*|TestScopeAuthorizer_.*)$' -count=1
 
       - name: Test core configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts agents/draft.test.ts agents/stored-draft.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts api/vcs-deliveries.test.ts agents/draft.test.ts agents/stored-draft.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
 
       - name: Test shared views
         working-directory: packages/views
@@ -87,6 +88,7 @@ jobs:
           settings/components/repositories-tab.test.tsx
           settings/components/settings-page.test.tsx
           settings/components/integrations-tab.test.tsx
+          settings/components/vcs-tab.test.tsx
           agents/create/create-agent-ui.test.ts
           agents/create/use-create-agent-submit.test.tsx
 

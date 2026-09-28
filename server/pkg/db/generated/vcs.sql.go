@@ -25,6 +25,9 @@ cleared_links AS (
 cleared_statuses AS (
     DELETE FROM vcs_commit_status WHERE connection_id IN (SELECT target.id FROM target)
 ),
+cleared_deliveries AS (
+    DELETE FROM vcs_webhook_delivery WHERE connection_id IN (SELECT target.id FROM target)
+),
 cleared_prs AS (
     DELETE FROM vcs_pull_request WHERE connection_id IN (SELECT target.id FROM target)
 )
@@ -343,6 +346,106 @@ func (q *Queries) ListVCSPullRequestsByIssue(ctx context.Context, issueID pgtype
 		return nil, err
 	}
 	return items, nil
+}
+
+const listVCSWebhookDeliveries = `-- name: ListVCSWebhookDeliveries :many
+SELECT id, workspace_id, connection_id, provider, event, event_uuid, webhook_uuid, project_path, ref, before_sha, after_sha, checkout_sha, commit_count, handler_action, received_at FROM vcs_webhook_delivery
+WHERE workspace_id = $1 AND connection_id = $2
+ORDER BY received_at DESC
+LIMIT $3
+`
+
+type ListVCSWebhookDeliveriesParams struct {
+	WorkspaceID  pgtype.UUID `json:"workspace_id"`
+	ConnectionID pgtype.UUID `json:"connection_id"`
+	Limit        int32       `json:"limit"`
+}
+
+func (q *Queries) ListVCSWebhookDeliveries(ctx context.Context, arg ListVCSWebhookDeliveriesParams) ([]VcsWebhookDelivery, error) {
+	rows, err := q.db.Query(ctx, listVCSWebhookDeliveries, arg.WorkspaceID, arg.ConnectionID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []VcsWebhookDelivery{}
+	for rows.Next() {
+		var i VcsWebhookDelivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ConnectionID,
+			&i.Provider,
+			&i.Event,
+			&i.EventUuid,
+			&i.WebhookUuid,
+			&i.ProjectPath,
+			&i.Ref,
+			&i.BeforeSha,
+			&i.AfterSha,
+			&i.CheckoutSha,
+			&i.CommitCount,
+			&i.HandlerAction,
+			&i.ReceivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recordVCSWebhookDelivery = `-- name: RecordVCSWebhookDelivery :exec
+INSERT INTO vcs_webhook_delivery (
+    workspace_id, connection_id, provider, event, event_uuid, webhook_uuid,
+    project_path, ref, before_sha, after_sha, checkout_sha, commit_count,
+    handler_action
+) VALUES (
+    $1, $2, $3, $4, $6, $7,
+    $8, $9, $10,
+    $11, $12, $13,
+    $5
+)
+ON CONFLICT (connection_id, event_uuid)
+    WHERE event_uuid IS NOT NULL AND event_uuid <> ''
+DO NOTHING
+`
+
+type RecordVCSWebhookDeliveryParams struct {
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	ConnectionID  pgtype.UUID `json:"connection_id"`
+	Provider      string      `json:"provider"`
+	Event         string      `json:"event"`
+	HandlerAction string      `json:"handler_action"`
+	EventUuid     pgtype.Text `json:"event_uuid"`
+	WebhookUuid   pgtype.Text `json:"webhook_uuid"`
+	ProjectPath   pgtype.Text `json:"project_path"`
+	Ref           pgtype.Text `json:"ref"`
+	BeforeSha     pgtype.Text `json:"before_sha"`
+	AfterSha      pgtype.Text `json:"after_sha"`
+	CheckoutSha   pgtype.Text `json:"checkout_sha"`
+	CommitCount   pgtype.Int4 `json:"commit_count"`
+}
+
+func (q *Queries) RecordVCSWebhookDelivery(ctx context.Context, arg RecordVCSWebhookDeliveryParams) error {
+	_, err := q.db.Exec(ctx, recordVCSWebhookDelivery,
+		arg.WorkspaceID,
+		arg.ConnectionID,
+		arg.Provider,
+		arg.Event,
+		arg.HandlerAction,
+		arg.EventUuid,
+		arg.WebhookUuid,
+		arg.ProjectPath,
+		arg.Ref,
+		arg.BeforeSha,
+		arg.AfterSha,
+		arg.CheckoutSha,
+		arg.CommitCount,
+	)
+	return err
 }
 
 const rotateVCSConnectionWebhookSecret = `-- name: RotateVCSConnectionWebhookSecret :one

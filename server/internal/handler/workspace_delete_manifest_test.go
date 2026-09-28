@@ -123,6 +123,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"user_composio_connection":           workspaceDeleteKeep,
 	"vcs_commit_status":                  workspaceDelete,
 	"vcs_connection":                     workspaceDelete,
+	"vcs_webhook_delivery":               workspaceDelete,
 	"vcs_pull_request":                   workspaceDelete,
 	"verification_code":                  workspaceDeleteKeep,
 	"webhook_delivery":                   workspaceDelete,

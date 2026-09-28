@@ -11,6 +11,27 @@ ORDER BY created_at ASC;
 SELECT * FROM vcs_connection
 WHERE id = $1;
 
+-- name: RecordVCSWebhookDelivery :exec
+INSERT INTO vcs_webhook_delivery (
+    workspace_id, connection_id, provider, event, event_uuid, webhook_uuid,
+    project_path, ref, before_sha, after_sha, checkout_sha, commit_count,
+    handler_action
+) VALUES (
+    $1, $2, $3, $4, sqlc.narg('event_uuid'), sqlc.narg('webhook_uuid'),
+    sqlc.narg('project_path'), sqlc.narg('ref'), sqlc.narg('before_sha'),
+    sqlc.narg('after_sha'), sqlc.narg('checkout_sha'), sqlc.narg('commit_count'),
+    $5
+)
+ON CONFLICT (connection_id, event_uuid)
+    WHERE event_uuid IS NOT NULL AND event_uuid <> ''
+DO NOTHING;
+
+-- name: ListVCSWebhookDeliveries :many
+SELECT * FROM vcs_webhook_delivery
+WHERE workspace_id = $1 AND connection_id = $2
+ORDER BY received_at DESC
+LIMIT $3;
+
 -- name: UpsertVCSConnection :one
 -- Reconnecting the same instance rotates the stored token/secret, provider,
 -- and identity in place rather than creating a duplicate row.
@@ -48,6 +69,9 @@ cleared_links AS (
 ),
 cleared_statuses AS (
     DELETE FROM vcs_commit_status WHERE connection_id IN (SELECT target.id FROM target)
+),
+cleared_deliveries AS (
+    DELETE FROM vcs_webhook_delivery WHERE connection_id IN (SELECT target.id FROM target)
 ),
 cleared_prs AS (
     DELETE FROM vcs_pull_request WHERE connection_id IN (SELECT target.id FROM target)
