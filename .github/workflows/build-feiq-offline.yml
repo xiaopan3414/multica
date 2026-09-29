@@ -71,17 +71,19 @@ jobs:
           go test ./internal/service -run '^(TestSendVerificationCodeDevLogIncludesClientIP|TestCreatingAgentsSkillCoversAgentCreationContracts)$' -count=1
           go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings|TestSendCodeResendCooldownCanBeDisabled|TestVerificationCodeLoginDomainAppliesToExistingUsers|TestAgentWorkingDirectoryAPI.*|TestClaimTaskByRuntimeCarriesSynchronizedAgentWorkingDirectory|TestCreateAgent_(WorkspaceOwnerDelegatesOwnerToPublicRuntimeOwner|RejectsDelegatedOwner.*|RejectsPrivateRuntimeForNonOwner|AllowsPublicRuntimeForPlainMember)|TestCreateChatSessionPublishesCreatedAfterCommit|TestChatSessionAgentOwnerCanReadAndContinue|TestHasPendingChatTasks_UsesChatParticipantBoundary)$' -count=1
           go test ./internal/handler -run '^(TestExtractVCSWebhookMetadataGitLabPush|TestVCSWebhook_GitLabPushDeliveryAudit|TestVCSWebhook_InvalidGitLabTokenDoesNotAudit)$' -count=1
-          go test ./cmd/server -run '^(TestRegisterListeners_ChatSessionCreated.*|TestScopeAuthorizer_.*)$' -count=1
+          go test ./internal/handler -run '^TestChatFolder' -count=1
+          go test ./cmd/server -run '^(TestRegisterListeners_ChatSession(Created.*|OrganizedGoesOnlyToCreator)|TestScopeAuthorizer_.*)$' -count=1
 
       - name: Test core configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts api/vcs-deliveries.test.ts agents/draft.test.ts agents/stored-draft.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts api/client.test.ts api/vcs-deliveries.test.ts agents/draft.test.ts agents/stored-draft.test.ts chat/store.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
 
       - name: Test shared views
         working-directory: packages/views
         run: >-
           pnpm exec vitest run
           auth/login-page.test.tsx
+          chat/components/chat-thread-list.test.tsx
           agents/components/agent-working-directory-settings.test.tsx
           invitations/invitations-page.test.tsx
           layout/app-sidebar.test.tsx

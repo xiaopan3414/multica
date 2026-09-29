@@ -6,6 +6,17 @@ export interface ChatPinnedAgent {
   position: number;
 }
 
+/** A creator-owned group used to organize chat sessions in one workspace. */
+export interface ChatFolder {
+  id: string;
+  workspace_id: string;
+  creator_id: string;
+  name: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * Kind of a chat message. Additive (MUL-4351): the server always sends a
  * concrete value, but treat a missing/unknown value as "message" so an older
@@ -85,6 +96,8 @@ export interface ChatSession {
   /** Durable project context for every turn in this session. Null when the
    *  conversation uses workspace context only; optional for older servers. */
   project_id?: string | null;
+  /** Personal chat group. Null/absent means the session is ungrouped. */
+  folder_id?: string | null;
   title: string;
   status: "active" | "archived";
   /** True when the session has any unread assistant replies. List-only.

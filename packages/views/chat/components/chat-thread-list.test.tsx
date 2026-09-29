@@ -37,14 +37,26 @@ vi.mock("@multica/core/api", () => ({
 }));
 
 vi.mock("@multica/core/chat", () => ({
-  useChatStore: (selector: (s: { setActiveSession: typeof setActiveSession }) => unknown) =>
-    selector({ setActiveSession }),
+  useChatStore: (selector: (s: {
+    setActiveSession: typeof setActiveSession;
+    collapsedChatFolderIds: string[];
+    toggleChatFolderCollapsed: () => void;
+  }) => unknown) => selector({
+    setActiveSession,
+    collapsedChatFolderIds: [],
+    toggleChatFolderCollapsed: vi.fn(),
+  }),
 }));
 
 vi.mock("@multica/core/chat/mutations", () => ({
+  useCreateChatFolder: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteChatFolder: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteChatSession: () => ({ mutate: vi.fn(), isPending: false }),
+  useReorderChatFolders: () => ({ mutate: vi.fn(), isPending: false }),
+  useSetChatSessionFolder: () => ({ mutate: vi.fn(), isPending: false }),
   useSetChatSessionPinned: () => ({ mutate: vi.fn(), isPending: false }),
   useSetChatSessionArchived: () => ({ mutate: archiveMutate, isPending: false }),
+  useUpdateChatFolder: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {

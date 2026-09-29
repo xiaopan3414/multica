@@ -5,28 +5,77 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArchiveRestore,
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
+  Filter,
+  Folder,
+  FolderInput,
+  FolderPlus,
   Loader2,
+  MoreHorizontal,
+  Pencil,
   Pin,
   PinOff,
   Square,
   Trash2,
 } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
+import { Button } from "@multica/ui/components/ui/button";
+import { Input } from "@multica/ui/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@multica/ui/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@multica/ui/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@multica/ui/components/ui/dropdown-menu";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { paths, useWorkspaceSlug } from "@multica/core/paths";
 import { useWorkspacePresenceMap } from "@multica/core/agents";
 import { api } from "@multica/core/api";
-import { pendingChatTasksOptions, chatKeys, sortChatSessions } from "@multica/core/chat/queries";
 import {
+  pendingChatTasksOptions,
+  chatFoldersOptions,
+  chatKeys,
+  sortChatSessions,
+} from "@multica/core/chat/queries";
+import {
+  useCreateChatFolder,
+  useDeleteChatFolder,
   useDeleteChatSession,
+  useReorderChatFolders,
+  useSetChatSessionFolder,
   useSetChatSessionArchived,
   useSetChatSessionPinned,
+  useUpdateChatFolder,
 } from "@multica/core/chat/mutations";
 import { useChatStore } from "@multica/core/chat";
-import type { Agent, ChatSession, PendingChatTasksResponse } from "@multica/core/types";
+import type { Agent, ChatFolder, ChatSession, PendingChatTasksResponse } from "@multica/core/types";
 import { ActorAvatar } from "../../common/actor-avatar";
 import {
   RowActionsMenu,
@@ -39,6 +88,7 @@ import { removeChatMessageFromCaches } from "@multica/core/realtime";
 import { useT } from "../../i18n";
 
 const apiLogger = createLogger("chat.api");
+const UNGROUPED_FOLDER_KEY = "__ungrouped__";
 
 // IM-style timestamp: today → clock, this year → M/D, else full date.
 function formatChatTime(dateStr: string): string {
@@ -108,18 +158,27 @@ export function ChatThreadList({
   const openInNewTab = navigation?.openInNewTab;
   const getShareableUrl = navigation?.getShareableUrl;
   const agentById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+  const [agentFilterId, setAgentFilterId] = useState<string | null>(null);
+  const { data: folderData } = useQuery(chatFoldersOptions(wsId));
+  const folders = Array.isArray(folderData) ? folderData : [];
+  const collapsedFolderIds = useChatStore((s) => s.collapsedChatFolderIds);
+  const toggleFolderCollapsed = useChatStore((s) => s.toggleChatFolderCollapsed);
 
   // Split the flat cache locally: active chats fill the default history view,
   // archived chats fill the "Archived" view. Both sorted pinned-first (then by
   // activity) so the list stays ordered even after an optimistic pin/archive or
   // a WS patch mutates the flat cache in place.
   const historySessions = useMemo(
-    () => sortChatSessions(sessions.filter((s) => s.status !== "archived")),
-    [sessions],
+    () => sortChatSessions(sessions.filter(
+      (s) => s.status !== "archived" && (!agentFilterId || s.agent_id === agentFilterId),
+    )),
+    [sessions, agentFilterId],
   );
   const archivedSessions = useMemo(
-    () => sortChatSessions(sessions.filter((s) => s.status === "archived")),
-    [sessions],
+    () => sortChatSessions(sessions.filter(
+      (s) => s.status === "archived" && (!agentFilterId || s.agent_id === agentFilterId),
+    )),
+    [sessions, agentFilterId],
   );
 
   // Which view is showing. Falls back to history when the archived list drains
@@ -133,7 +192,19 @@ export function ChatThreadList({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingStopId, setConfirmingStopId] = useState<string | null>(null);
   const [stoppingTaskId, setStoppingTaskId] = useState<string | null>(null);
+  const [folderEditor, setFolderEditor] = useState<{
+    mode: "create" | "rename";
+    folder?: ChatFolder;
+  } | null>(null);
+  const [folderName, setFolderName] = useState("");
+  const [movingSession, setMovingSession] = useState<ChatSession | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState<ChatFolder | null>(null);
   const deleteSession = useDeleteChatSession();
+  const createFolder = useCreateChatFolder();
+  const updateFolder = useUpdateChatFolder();
+  const deleteFolder = useDeleteChatFolder();
+  const reorderFolders = useReorderChatFolders();
+  const setSessionFolder = useSetChatSessionFolder();
   const setPinned = useSetChatSessionPinned();
   const setArchived = useSetChatSessionArchived();
   const setActiveSession = useChatStore((s) => s.setActiveSession);
@@ -162,6 +233,33 @@ export function ChatThreadList({
     deleteSession.mutate(sessionId, {
       onSettled: () => setConfirmingDeleteId(null),
     });
+  };
+
+  const openFolderEditor = (folder?: ChatFolder) => {
+    setFolderName(folder?.name ?? "");
+    setFolderEditor(folder ? { mode: "rename", folder } : { mode: "create" });
+  };
+
+  const submitFolderEditor = () => {
+    const name = folderName.trim();
+    if (!name || !folderEditor) return;
+    if (folderEditor.mode === "create") {
+      createFolder.mutate(name, { onSuccess: () => setFolderEditor(null) });
+      return;
+    }
+    updateFolder.mutate(
+      { folderId: folderEditor.folder!.id, name },
+      { onSuccess: () => setFolderEditor(null) },
+    );
+  };
+
+  const moveFolder = (folderId: string, offset: -1 | 1) => {
+    const ordered = [...folders].sort((a, b) => a.position - b.position);
+    const index = ordered.findIndex((folder) => folder.id === folderId);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
+    [ordered[index], ordered[target]] = [ordered[target]!, ordered[index]!];
+    reorderFolders.mutate(ordered.map((folder) => folder.id));
   };
 
   const handleConfirmStop = (
@@ -298,6 +396,14 @@ export function ChatThreadList({
               onSelect: () =>
                 setPinned.mutate({ sessionId: session.id, pinned: !session.pinned }),
             },
+            ...((folders.length > 0 || session.folder_id)
+              ? [{
+                  key: "move-to-folder",
+                  icon: <FolderInput className="size-3.5" />,
+                  label: t(($) => $.list.move_to_group),
+                  onSelect: () => setMovingSession(session),
+                } satisfies RowActionItem]
+              : []),
             isRunning
               ? {
                   key: "stop",
@@ -496,6 +602,58 @@ export function ChatThreadList({
   }
 
   // History (default) view: active rows + a footer entry into the archive.
+  const filterAgents = agents.filter((agent) =>
+    sessions.some((session) => session.agent_id === agent.id),
+  );
+  const selectedFilterAgent = agentFilterId ? agentById.get(agentFilterId) : null;
+  const historyToolbar = (
+    <div className="mb-1 flex h-9 items-center gap-1 px-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant={agentFilterId ? "brandSubtle" : "ghost"}
+              size={selectedFilterAgent ? "sm" : "icon-sm"}
+              aria-label={t(($) => $.list.filter_by_agent)}
+              title={t(($) => $.list.filter_by_agent)}
+              className={selectedFilterAgent ? "min-w-0 max-w-[calc(100%-2rem)]" : undefined}
+            >
+              <Filter className="size-3.5" />
+              {selectedFilterAgent && <span className="truncate">{selectedFilterAgent.name}</span>}
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="start" className="w-52">
+          <DropdownMenuLabel>{t(($) => $.list.filter_by_agent)}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={agentFilterId ?? "all"}
+            onValueChange={(value) => setAgentFilterId(value === "all" ? null : value)}
+          >
+            <DropdownMenuRadioItem value="all">
+              {t(($) => $.list.all_agents)}
+            </DropdownMenuRadioItem>
+            {filterAgents.map((agent) => (
+              <DropdownMenuRadioItem key={agent.id} value={agent.id}>
+                <span className="truncate">{agent.name}</span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={t(($) => $.list.create_group)}
+        title={t(($) => $.list.create_group)}
+        onClick={() => openFolderEditor()}
+      >
+        <FolderPlus className="size-4" />
+      </Button>
+    </div>
+  );
+
   const archivedEntry = archivedSessions.length > 0 && (
     <button
       type="button"
@@ -511,21 +669,232 @@ export function ChatThreadList({
     </button>
   );
 
-  if (historySessions.length === 0) {
+  const knownFolderIDs = new Set(folders.map((folder) => folder.id));
+  const orderedFolders = [...folders].sort((a, b) => a.position - b.position);
+  const ungroupedSessions = historySessions.filter(
+    (session) => !session.folder_id || !knownFolderIDs.has(session.folder_id),
+  );
+
+  const renderGroup = (
+    key: string,
+    name: string,
+    groupSessions: ChatSession[],
+    folder?: ChatFolder,
+  ) => {
+    const collapsed = collapsedFolderIds.includes(key);
+    const folderIndex = folder
+      ? orderedFolders.findIndex((candidate) => candidate.id === folder.id)
+      : -1;
     return (
-      <>
-        <div className="px-2 py-1.5 text-caption text-muted-foreground">
-          {t(($) => $.window.no_previous)}
+      <section key={key} aria-label={name} className="mt-1">
+        <div className="group/folder flex h-8 min-w-0 items-center gap-1 rounded-md px-1 hover:bg-accent/40">
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            aria-label={collapsed
+              ? t(($) => $.list.expand_group, { name })
+              : t(($) => $.list.collapse_group, { name })}
+            onClick={() => toggleFolderCollapsed(key)}
+            className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {collapsed ? (
+              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            )}
+            <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-caption font-medium">{name}</span>
+            <span className="shrink-0 tabular-nums text-micro text-muted-foreground">
+              {groupSessions.length}
+            </span>
+          </button>
+          {folder && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={t(($) => $.list.group_actions, { name })}
+                    className="inline-flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => openFolderEditor(folder)}>
+                  <Pencil />
+                  {t(($) => $.list.rename_group)}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={folderIndex <= 0}
+                  onClick={() => moveFolder(folder.id, -1)}
+                >
+                  <ChevronUp />
+                  {t(($) => $.list.move_group_up)}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={folderIndex < 0 || folderIndex >= orderedFolders.length - 1}
+                  onClick={() => moveFolder(folder.id, 1)}
+                >
+                  <ChevronDown />
+                  {t(($) => $.list.move_group_down)}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => setDeletingFolder(folder)}>
+                  <Trash2 />
+                  {t(($) => $.list.delete_group)}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
-        {archivedEntry}
-      </>
+        {!collapsed && groupSessions.map(renderRow)}
+      </section>
     );
-  }
+  };
+
+  const groupedHistory = folders.length > 0 ? (
+    <>
+      {orderedFolders.map((folder) => renderGroup(
+        folder.id,
+        folder.name,
+        historySessions.filter((session) => session.folder_id === folder.id),
+        folder,
+      ))}
+      {ungroupedSessions.length > 0 && renderGroup(
+        UNGROUPED_FOLDER_KEY,
+        t(($) => $.list.ungrouped),
+        ungroupedSessions,
+      )}
+    </>
+  ) : (
+    historySessions.map(renderRow)
+  );
 
   return (
     <>
-      {historySessions.map(renderRow)}
+      {historyToolbar}
+      {historySessions.length > 0 ? groupedHistory : (
+        <div className="px-2 py-1.5 text-caption text-muted-foreground">
+          {agentFilterId ? t(($) => $.list.no_filter_matches) : t(($) => $.window.no_previous)}
+        </div>
+      )}
       {archivedEntry}
+      <Dialog
+        open={folderEditor !== null}
+        onOpenChange={(open) => {
+          if (!open) setFolderEditor(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {folderEditor?.mode === "rename"
+                ? t(($) => $.list.rename_group)
+                : t(($) => $.list.create_group)}
+            </DialogTitle>
+            <DialogDescription>{t(($) => $.list.group_name_description)}</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitFolderEditor();
+            }}
+            className="contents"
+          >
+            <Input
+              autoFocus
+              value={folderName}
+              maxLength={80}
+              onChange={(event) => setFolderName(event.target.value)}
+              placeholder={t(($) => $.list.group_name_placeholder)}
+              aria-label={t(($) => $.list.group_name)}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setFolderEditor(null)}>
+                {t(($) => $.list.cancel)}
+              </Button>
+              <Button
+                type="submit"
+                disabled={!folderName.trim() || createFolder.isPending || updateFolder.isPending}
+              >
+                {t(($) => $.list.save_group)}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={movingSession !== null}
+        onOpenChange={(open) => {
+          if (!open) setMovingSession(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t(($) => $.list.move_to_group)}</DialogTitle>
+            <DialogDescription>
+              {movingSession?.title || t(($) => $.window.untitled)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 space-y-1 overflow-y-auto">
+            {[
+              { id: null, name: t(($) => $.list.ungrouped) },
+              ...orderedFolders.map((folder) => ({ id: folder.id, name: folder.name })),
+            ].map((target) => (
+              <button
+                key={target.id ?? UNGROUPED_FOLDER_KEY}
+                type="button"
+                onClick={() => {
+                  if (!movingSession) return;
+                  setSessionFolder.mutate(
+                    { sessionId: movingSession.id, folderId: target.id },
+                    { onSuccess: () => setMovingSession(null) },
+                  );
+                }}
+                className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-body outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <Folder className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">{target.name}</span>
+                {(movingSession?.folder_id ?? null) === target.id && <Check className="size-4" />}
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deletingFolder !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingFolder(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.list.delete_group)}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(($) => $.list.delete_group_description, { name: deletingFolder?.name ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t(($) => $.list.cancel)}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteFolder.isPending}
+              onClick={() => {
+                if (!deletingFolder) return;
+                deleteFolder.mutate(deletingFolder.id, {
+                  onSuccess: () => setDeletingFolder(null),
+                });
+              }}
+            >
+              {t(($) => $.list.delete_group)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

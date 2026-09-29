@@ -2204,6 +2204,15 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/draft-restores/{restoreId}", h.ConsumeChatDraftRestore)
 				})
 			})
+			r.Route("/api/chat/folders", func(r chi.Router) {
+				r.Get("/", h.ListChatFolders)
+				r.Post("/", h.CreateChatFolder)
+				r.Put("/order", h.ReorderChatFolders)
+				r.Route("/{folderId}", func(r chi.Router) {
+					r.Patch("/", h.UpdateChatFolder)
+					r.Delete("/", h.DeleteChatFolder)
+				})
+			})
 			r.Get("/api/chat/pending-tasks", h.ListPendingChatTasks)
 			r.Get("/api/chat/pending-tasks/has-any", h.HasPendingChatTasks)
 

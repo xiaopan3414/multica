@@ -75,6 +75,20 @@ describe("ApiClient edit guards", () => {
   });
 });
 
+describe("ApiClient chat folder response schema", () => {
+  it("falls back to an empty list for a malformed response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      { id: "folder-1", name: "Missing required fields" },
+    ]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+
+    const client = new ApiClient("https://api.example.test");
+    await expect(client.listChatFolders()).resolves.toEqual([]);
+  });
+});
+
 describe("ApiClient pull-request response schema", () => {
   const validPR = {
     id: "pr-1",

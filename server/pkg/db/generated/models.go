@@ -432,6 +432,16 @@ type ChatDraftRestore struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type ChatFolder struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	CreatorID   pgtype.UUID        `json:"creator_id"`
+	Name        string             `json:"name"`
+	Position    int64              `json:"position"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type ChatMessage struct {
 	ID                            pgtype.UUID        `json:"id"`
 	ChatSessionID                 pgtype.UUID        `json:"chat_session_id"`
@@ -478,6 +488,7 @@ type ChatSession struct {
 	IsAgentIntro bool               `json:"is_agent_intro"`
 	PinnedAt     pgtype.Timestamptz `json:"pinned_at"`
 	ProjectID    pgtype.UUID        `json:"project_id"`
+	FolderID     pgtype.UUID        `json:"folder_id"`
 }
 
 type ClientUsageDaily struct {

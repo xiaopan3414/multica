@@ -27,6 +27,7 @@ import {
   DashboardUsageByAgentListSchema,
   DashboardUsageDailyListSchema,
   ChatDraftRestoresResponseSchema,
+  ChatFolderListSchema,
   ChatPendingTaskSchema,
   PrioritizeQueuedChatTaskResponseSchema,
   CreateFeedbackResponseSchema,
@@ -81,6 +82,22 @@ describe("StoredAgentDraftSchema", () => {
       StoredAgentDraftSchema.parse({ owner_id: "runtime-owner" }).owner_id,
     ).toBe("runtime-owner");
     expect(StoredAgentDraftSchema.parse({ owner_id: 42 }).owner_id).toBeNull();
+  });
+});
+
+describe("ChatFolderListSchema", () => {
+  it("accepts valid groups and rejects malformed rows", () => {
+    const folder = {
+      id: "folder-1",
+      workspace_id: "workspace-1",
+      creator_id: "user-1",
+      name: "Code reviews",
+      position: 0,
+      created_at: "2026-09-29T00:00:00Z",
+      updated_at: "2026-09-29T00:00:00Z",
+    };
+    expect(ChatFolderListSchema.safeParse([folder]).success).toBe(true);
+    expect(ChatFolderListSchema.safeParse([{ ...folder, position: "first" }]).success).toBe(false);
   });
 });
 

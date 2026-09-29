@@ -16,6 +16,7 @@ const logger = createLogger("chat.store");
 const AGENT_STORAGE_KEY = "multica:chat:selectedAgentId";
 const PROJECT_STORAGE_KEY = "multica:chat:selectedProjectId";
 const SESSION_STORAGE_KEY = "multica:chat:activeSessionId";
+const COLLAPSED_FOLDERS_STORAGE_KEY = "multica:chat:collapsedFolderIds";
 /** Drafts are stored as one JSON blob per workspace: { [sessionId]: text }. */
 const DRAFTS_KEY = "multica:chat:drafts";
 /** Draft attachment records per workspace: { [sessionId]: Attachment[] }. */
@@ -83,6 +84,19 @@ function readDrafts(storage: StorageAdapter, key: string): Record<string, string
     return typeof parsed === "object" && parsed !== null ? parsed : {};
   } catch {
     return {};
+  }
+}
+
+function readStringList(storage: StorageAdapter, key: string): string[] {
+  const raw = storage.getItem(key);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((value): value is string => typeof value === "string"))]
+      : [];
+  } catch {
+    return [];
   }
 }
 
@@ -309,6 +323,8 @@ export interface ChatState {
   /** Project context for the next session. Existing sessions remain bound to
    *  their server-persisted project_id. */
   selectedProjectId: string | null;
+  /** Creator-owned chat groups collapsed in this workspace. */
+  collapsedChatFolderIds: string[];
   /** Drafts per session: sessionId (or DRAFT_NEW_SESSION) → markdown text. */
   inputDrafts: Record<string, string>;
   /** Attachment rows referenced by each input draft. */
@@ -328,6 +344,7 @@ export interface ChatState {
   setActiveSession: (id: string | null) => void;
   setSelectedAgentId: (id: string) => void;
   setSelectedProjectId: (id: string | null) => void;
+  toggleChatFolderCollapsed: (folderId: string) => void;
   /** sessionId accepts a real session UUID or DRAFT_NEW_SESSION. */
   setInputDraft: (sessionId: string, draft: string) => void;
   /** Append a markdown fragment to a draft slot's text (upload write-back). */
@@ -394,6 +411,7 @@ export function createChatStore(options: ChatStoreOptions) {
     activeSessionId: storage.getItem(wsKey(SESSION_STORAGE_KEY)),
     selectedAgentId: initialAgentId,
     selectedProjectId: storage.getItem(wsKey(PROJECT_STORAGE_KEY)),
+    collapsedChatFolderIds: readStringList(storage, wsKey(COLLAPSED_FOLDERS_STORAGE_KEY)),
     inputDrafts: initialDraftSlots.inputDrafts,
     inputDraftAttachments: initialDraftSlots.inputDraftAttachments,
     appliedDraftRestoreIds: readAppliedRestores(storage, wsKey(APPLIED_RESTORES_KEY)),
@@ -439,6 +457,18 @@ export function createChatStore(options: ChatStoreOptions) {
       if (id) storage.setItem(wsKey(PROJECT_STORAGE_KEY), id);
       else storage.removeItem(wsKey(PROJECT_STORAGE_KEY));
       set({ selectedProjectId: id });
+    },
+    toggleChatFolderCollapsed: (folderId) => {
+      const current = get().collapsedChatFolderIds;
+      const next = current.includes(folderId)
+        ? current.filter((id) => id !== folderId)
+        : [...current, folderId];
+      if (next.length > 0) {
+        storage.setItem(wsKey(COLLAPSED_FOLDERS_STORAGE_KEY), JSON.stringify(next));
+      } else {
+        storage.removeItem(wsKey(COLLAPSED_FOLDERS_STORAGE_KEY));
+      }
+      set({ collapsedChatFolderIds: next });
     },
     // Append-only until the server confirms. There is deliberately no capacity
     // cap: every entry in here is an UNconfirmed consume, and evicting one
@@ -651,6 +681,7 @@ export function createChatStore(options: ChatStoreOptions) {
     const nextSession = storage.getItem(wsKey(SESSION_STORAGE_KEY));
     const nextAgent = storage.getItem(wsKey(AGENT_STORAGE_KEY));
     const nextProject = storage.getItem(wsKey(PROJECT_STORAGE_KEY));
+    const nextCollapsedFolders = readStringList(storage, wsKey(COLLAPSED_FOLDERS_STORAGE_KEY));
     // Drafts are namespaced per workspace, so the workspace being switched TO
     // has its own legacy slots to fold — migrate against that workspace's own
     // persisted agent, not the one we are leaving.
@@ -674,6 +705,7 @@ export function createChatStore(options: ChatStoreOptions) {
       activeSessionId: nextSession,
       selectedAgentId: nextAgent,
       selectedProjectId: nextProject,
+      collapsedChatFolderIds: nextCollapsedFolders,
       inputDrafts: nextDrafts,
       inputDraftAttachments: nextDraftAttachments,
       appliedDraftRestoreIds: readAppliedRestores(storage, wsKey(APPLIED_RESTORES_KEY)),

@@ -4,6 +4,7 @@ import { useWorkspaceId } from "../hooks";
 import { chatKeys, sortChatSessions, QUICK_ACTIONS_PENDING_TIMEOUT_MS } from "./queries";
 import { createLogger } from "../logger";
 import type {
+  ChatFolder,
   ChatSession,
   ChatPinnedAgent,
   ChatDraftRestoresResponse,
@@ -11,6 +12,117 @@ import type {
 } from "../types";
 
 const logger = createLogger("chat.mut");
+
+export function useCreateChatFolder() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: (name: string) => api.createChatFolder(name),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.folders(wsId) });
+    },
+  });
+}
+
+export function useUpdateChatFolder() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: ({ folderId, name }: { folderId: string; name: string }) =>
+      api.updateChatFolder(folderId, name),
+    onMutate: async ({ folderId, name }) => {
+      await qc.cancelQueries({ queryKey: chatKeys.folders(wsId) });
+      const previous = qc.getQueryData<ChatFolder[]>(chatKeys.folders(wsId));
+      qc.setQueryData<ChatFolder[]>(chatKeys.folders(wsId), (current) =>
+        current?.map((folder) => folder.id === folderId ? { ...folder, name } : folder),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) qc.setQueryData(chatKeys.folders(wsId), context.previous);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.folders(wsId) });
+    },
+  });
+}
+
+export function useDeleteChatFolder() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: (folderId: string) => api.deleteChatFolder(folderId),
+    onSuccess: (_data, folderId) => {
+      qc.setQueryData<ChatFolder[]>(chatKeys.folders(wsId), (current) =>
+        current?.filter((folder) => folder.id !== folderId),
+      );
+      qc.setQueryData<ChatSession[]>(chatKeys.sessions(wsId), (current) =>
+        current?.map((session) =>
+          session.folder_id === folderId ? { ...session, folder_id: null } : session,
+        ),
+      );
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.folders(wsId) });
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+export function useReorderChatFolders() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: (folderIds: string[]) => api.reorderChatFolders(folderIds),
+    onMutate: async (folderIds) => {
+      await qc.cancelQueries({ queryKey: chatKeys.folders(wsId) });
+      const previous = qc.getQueryData<ChatFolder[]>(chatKeys.folders(wsId));
+      const byID = new Map(previous?.map((folder) => [folder.id, folder]));
+      const reordered = folderIds.flatMap((id, position) => {
+        const folder = byID.get(id);
+        return folder ? [{ ...folder, position }] : [];
+      });
+      qc.setQueryData(chatKeys.folders(wsId), reordered);
+      return { previous };
+    },
+    onError: (_error, _folderIds, context) => {
+      if (context?.previous) qc.setQueryData(chatKeys.folders(wsId), context.previous);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.folders(wsId) });
+    },
+  });
+}
+
+export function useSetChatSessionFolder() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: ({ sessionId, folderId }: { sessionId: string; folderId: string | null }) =>
+      api.updateChatSession(sessionId, { folder_id: folderId }),
+    onMutate: async ({ sessionId, folderId }) => {
+      await qc.cancelQueries({ queryKey: chatKeys.sessions(wsId) });
+      const previous = qc.getQueryData<ChatSession[]>(chatKeys.sessions(wsId));
+      qc.setQueryData<ChatSession[]>(chatKeys.sessions(wsId), (current) =>
+        current?.map((session) =>
+          session.id === sessionId ? { ...session, folder_id: folderId } : session,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) qc.setQueryData(chatKeys.sessions(wsId), context.previous);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
 
 /**
  * Consume a deferred-cancellation draft restore (#5219) after the composer has

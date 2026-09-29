@@ -2,6 +2,7 @@ import { infiniteQueryOptions, queryOptions, type QueryClient } from "@tanstack/
 import { api } from "../api";
 import type { TaskMessagePayload } from "../types/events";
 import type {
+  ChatFolder,
   ChatQuickActionsFailureState,
   ChatQuickActionsPendingState,
   ChatSession,
@@ -55,6 +56,8 @@ export const chatKeys = {
   pendingTasks: (wsId: string) => [...chatKeys.all(wsId), "pending-tasks"] as const,
   /** Per-user pinned agents for the quick-agent bar. */
   pinnedAgents: (wsId: string) => [...chatKeys.all(wsId), "pinned-agents"] as const,
+  /** Creator-owned chat groups for the current workspace. */
+  folders: (wsId: string) => [...chatKeys.all(wsId), "folders"] as const,
   /**
    * Boolean "does the user have any in-flight chat task" — the FAB's cheap
    * running indicator. Separate cache from the detailed `pendingTasks` list so
@@ -78,6 +81,13 @@ export function chatSessionsOptions(wsId: string) {
     queryKey: chatKeys.sessions(wsId),
     queryFn: () => api.listChatSessions({ status: "all" }),
     staleTime: Infinity,
+  });
+}
+
+export function chatFoldersOptions(wsId: string) {
+  return queryOptions<ChatFolder[]>({
+    queryKey: chatKeys.folders(wsId),
+    queryFn: () => api.listChatFolders(),
   });
 }
 

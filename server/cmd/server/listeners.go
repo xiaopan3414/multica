@@ -79,15 +79,16 @@ func projectOutbound(eventType string, payload any) any {
 func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 	// Personal events should NOT be broadcast to the whole workspace.
 	personalEvents := map[string]bool{
-		protocol.EventInboxNew:           true,
-		protocol.EventInboxRead:          true,
-		protocol.EventInboxArchived:      true,
-		protocol.EventInboxUnarchived:    true,
-		protocol.EventInboxBatchRead:     true,
-		protocol.EventInboxBatchArchived: true,
-		protocol.EventInvitationCreated:  true,
-		protocol.EventInvitationRevoked:  true,
-		protocol.EventChatSessionCreated: true,
+		protocol.EventInboxNew:             true,
+		protocol.EventInboxRead:            true,
+		protocol.EventInboxArchived:        true,
+		protocol.EventInboxUnarchived:      true,
+		protocol.EventInboxBatchRead:       true,
+		protocol.EventInboxBatchArchived:   true,
+		protocol.EventInvitationCreated:    true,
+		protocol.EventInvitationRevoked:    true,
+		protocol.EventChatSessionCreated:   true,
+		protocol.EventChatSessionOrganized: true,
 	}
 
 	// Helper: marshal event and send to a specific user.
@@ -196,6 +197,17 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 			seen[recipientID] = struct{}{}
 			sendToRecipient(b, e, recipientID)
 		}
+	})
+
+	// Personal chat organization is visible only to the session creator. Chat
+	// session update events remain workspace fanout because the target agent
+	// owner also follows shared title/status changes.
+	bus.Subscribe(protocol.EventChatSessionOrganized, func(e events.Event) {
+		payload, ok := e.Payload.(protocol.ChatSessionOrganizedPayload)
+		if !ok {
+			return
+		}
+		sendToRecipient(b, e, payload.RecipientUserID)
 	})
 
 	// member:added — also send to the invited user so they discover the new workspace.

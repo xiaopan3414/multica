@@ -207,6 +207,21 @@ func (h *Handler) revokeAndRemoveMember(ctx context.Context, workspaceID, userID
 		return empty, err
 	}
 
+	// Chat folders are personal workspace organization. Clear session links
+	// before deleting the folders so a later re-invite starts with a clean view.
+	if err := qtx.ClearChatSessionFoldersByCreator(ctx, db.ClearChatSessionFoldersByCreatorParams{
+		WorkspaceID: workspaceID,
+		CreatorID:   userID,
+	}); err != nil {
+		return empty, err
+	}
+	if err := qtx.DeleteChatFoldersByCreator(ctx, db.DeleteChatFoldersByCreatorParams{
+		WorkspaceID: workspaceID,
+		CreatorID:   userID,
+	}); err != nil {
+		return empty, err
+	}
+
 	// Member row deletion lives inside the same tx so a successful revoke is
 	// never followed by a failed member-delete (which would leave the user
 	// still a member with a dead runtime), and a failed revoke never leaves

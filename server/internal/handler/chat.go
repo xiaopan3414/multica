@@ -155,7 +155,7 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 		RecipientUserIDs: recipientUserIDs,
 	})
 
-	writeJSON(w, http.StatusCreated, chatSessionToResponse(session))
+	writeJSON(w, http.StatusCreated, chatSessionToResponseForUser(session, userID))
 }
 
 func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +207,7 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 				AgentID:     uuidToString(s.AgentID),
 				CreatorID:   uuidToString(s.CreatorID),
 				ProjectID:   uuidToPtr(s.ProjectID),
+				FolderID:    chatSessionFolderIDForUser(s.FolderID, s.CreatorID, userID),
 				Title:       s.Title,
 				Status:      s.Status,
 				HasUnread:   s.UnreadCount > 0,
@@ -237,6 +238,7 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 				AgentID:     uuidToString(s.AgentID),
 				CreatorID:   uuidToString(s.CreatorID),
 				ProjectID:   uuidToPtr(s.ProjectID),
+				FolderID:    chatSessionFolderIDForUser(s.FolderID, s.CreatorID, userID),
 				Title:       s.Title,
 				Status:      s.Status,
 				HasUnread:   s.UnreadCount > 0,
@@ -377,17 +379,19 @@ func (h *Handler) GetChatSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(session))
+	writeJSON(w, http.StatusOK, chatSessionToResponseForUser(session, userID))
 }
 
 type UpdateChatSessionRequest struct {
 	Title     *string         `json:"title"`
 	ProjectID json.RawMessage `json:"project_id"`
+	FolderID  json.RawMessage `json:"folder_id"`
 }
 
 // UpdateChatSession updates one user-editable field on a chat session. Title
 // is surfaced by inline rename; project_id controls the project context used
-// by subsequent turns. Status and pinned keep their dedicated endpoints,
+// by subsequent turns; folder_id controls the creator's personal organization.
+// Status and pinned keep their dedicated endpoints,
 // agent/creator/workspace are immutable, and the resume pointers
 // (session_id / work_dir / runtime_id) remain daemon-owned.
 func (h *Handler) UpdateChatSession(w http.ResponseWriter, r *http.Request) {
@@ -405,8 +409,15 @@ func (h *Handler) UpdateChatSession(w http.ResponseWriter, r *http.Request) {
 	}
 	hasTitle := req.Title != nil
 	hasProjectID := req.ProjectID != nil
-	if hasTitle == hasProjectID {
-		writeError(w, http.StatusBadRequest, "exactly one of title or project_id is required")
+	hasFolderID := req.FolderID != nil
+	fieldCount := 0
+	for _, present := range []bool{hasTitle, hasProjectID, hasFolderID} {
+		if present {
+			fieldCount++
+		}
+	}
+	if fieldCount != 1 {
+		writeError(w, http.StatusBadRequest, "exactly one of title, project_id, or folder_id is required")
 		return
 	}
 
@@ -420,6 +431,7 @@ func (h *Handler) UpdateChatSession(w http.ResponseWriter, r *http.Request) {
 		err     error
 	)
 	var projectIDChanged bool
+	var folderIDChanged bool
 	if hasTitle {
 		title := strings.TrimSpace(*req.Title)
 		if title == "" {
@@ -434,7 +446,7 @@ func (h *Handler) UpdateChatSession(w http.ResponseWriter, r *http.Request) {
 			ID:    session.ID,
 			Title: title,
 		})
-	} else {
+	} else if hasProjectID {
 		projectID := pgtype.UUID{Valid: false}
 		if string(req.ProjectID) != "null" {
 			var rawProjectID string
@@ -484,6 +496,62 @@ func (h *Handler) UpdateChatSession(w http.ResponseWriter, r *http.Request) {
 			err = tx.Commit(r.Context())
 		}
 		projectIDChanged = true
+	} else {
+		if uuidToString(session.CreatorID) != userID {
+			writeError(w, http.StatusForbidden, "only the chat creator can organize this session")
+			return
+		}
+		folderID := pgtype.UUID{Valid: false}
+		if string(req.FolderID) != "null" {
+			var rawFolderID string
+			if err := json.Unmarshal(req.FolderID, &rawFolderID); err != nil {
+				writeError(w, http.StatusBadRequest, "folder_id must be a UUID or null")
+				return
+			}
+			rawFolderID = strings.TrimSpace(rawFolderID)
+			if rawFolderID == "" {
+				writeError(w, http.StatusBadRequest, "folder_id must be a UUID or null")
+				return
+			}
+			folderID, ok = parseUUIDOrBadRequest(w, rawFolderID, "folder_id")
+			if !ok {
+				return
+			}
+		}
+
+		tx, txErr := h.TxStarter.Begin(r.Context())
+		if txErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to start transaction")
+			return
+		}
+		defer tx.Rollback(r.Context())
+		qtx := h.Queries.WithTx(tx)
+
+		if folderID.Valid {
+			if _, loadErr := qtx.GetChatFolderForCreator(r.Context(), db.GetChatFolderForCreatorParams{
+				ID:          folderID,
+				WorkspaceID: session.WorkspaceID,
+				CreatorID:   session.CreatorID,
+			}); loadErr != nil {
+				if errors.Is(loadErr, pgx.ErrNoRows) {
+					writeError(w, http.StatusNotFound, "chat folder not found")
+					return
+				}
+				writeError(w, http.StatusInternalServerError, "failed to load chat folder")
+				return
+			}
+		}
+
+		updated, err = qtx.UpdateChatSessionFolder(r.Context(), db.UpdateChatSessionFolderParams{
+			ID:          session.ID,
+			WorkspaceID: session.WorkspaceID,
+			CreatorID:   session.CreatorID,
+			FolderID:    folderID,
+		})
+		if err == nil {
+			err = tx.Commit(r.Context())
+		}
+		folderIDChanged = true
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update chat session")
@@ -491,18 +559,28 @@ func (h *Handler) UpdateChatSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resolvedSessionID := uuidToString(updated.ID)
-	payload := protocol.ChatSessionUpdatedPayload{
-		ChatSessionID: resolvedSessionID,
-		Title:         updated.Title,
-		UpdatedAt:     timestampToString(updated.UpdatedAt),
+	if folderIDChanged {
+		folderID := uuidToPtr(updated.FolderID)
+		h.publishChat(protocol.EventChatSessionOrganized, workspaceID, "member", userID, resolvedSessionID, protocol.ChatSessionOrganizedPayload{
+			ChatSessionID:   resolvedSessionID,
+			FolderID:        folderID,
+			UpdatedAt:       timestampToString(updated.UpdatedAt),
+			RecipientUserID: userID,
+		})
+	} else {
+		payload := protocol.ChatSessionUpdatedPayload{
+			ChatSessionID: resolvedSessionID,
+			Title:         updated.Title,
+			UpdatedAt:     timestampToString(updated.UpdatedAt),
+		}
+		if projectIDChanged {
+			projectID := uuidToPtr(updated.ProjectID)
+			payload.ProjectID = &projectID
+		}
+		h.publishChat(protocol.EventChatSessionUpdated, workspaceID, "member", userID, resolvedSessionID, payload)
 	}
-	if projectIDChanged {
-		projectID := uuidToPtr(updated.ProjectID)
-		payload.ProjectID = &projectID
-	}
-	h.publishChat(protocol.EventChatSessionUpdated, workspaceID, "member", userID, resolvedSessionID, payload)
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(updated))
+	writeJSON(w, http.StatusOK, chatSessionToResponseForUser(updated, userID))
 }
 
 type SetChatSessionPinnedRequest struct {
@@ -550,7 +628,7 @@ func (h *Handler) SetChatSessionPinned(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     timestampToString(updated.UpdatedAt),
 	})
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(updated))
+	writeJSON(w, http.StatusOK, chatSessionToResponseForUser(updated, userID))
 }
 
 type SetChatSessionArchivedRequest struct {
@@ -700,7 +778,7 @@ func (h *Handler) SetChatSessionArchived(w http.ResponseWriter, r *http.Request)
 		UpdatedAt:     timestampToString(updated.UpdatedAt),
 	})
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(updated))
+	writeJSON(w, http.StatusOK, chatSessionToResponseForUser(updated, userID))
 }
 
 // DeleteChatSession hard-deletes a chat session the caller participates in. The
@@ -1946,6 +2024,7 @@ type ChatSessionResponse struct {
 	AgentID     string  `json:"agent_id"`
 	CreatorID   string  `json:"creator_id"`
 	ProjectID   *string `json:"project_id"`
+	FolderID    *string `json:"folder_id"`
 	Title       string  `json:"title"`
 	Status      string  `json:"status"`
 	// Only populated by list endpoints — single-session fetches return 0/false/nil.
@@ -2028,6 +2107,19 @@ func chatSessionToResponse(s db.ChatSession) ChatSessionResponse {
 		CreatedAt:   timestampToString(s.CreatedAt),
 		UpdatedAt:   timestampToString(s.UpdatedAt),
 	}
+}
+
+func chatSessionToResponseForUser(s db.ChatSession, userID string) ChatSessionResponse {
+	response := chatSessionToResponse(s)
+	response.FolderID = chatSessionFolderIDForUser(s.FolderID, s.CreatorID, userID)
+	return response
+}
+
+func chatSessionFolderIDForUser(folderID, creatorID pgtype.UUID, userID string) *string {
+	if uuidToString(creatorID) != userID {
+		return nil
+	}
+	return uuidToPtr(folderID)
 }
 
 func chatMessageToResponse(m db.ChatMessage, attachments []AttachmentResponse) ChatMessageResponse {

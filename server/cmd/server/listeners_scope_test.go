@@ -163,3 +163,32 @@ func TestRegisterListeners_ChatSessionCreatedFallsBackToActor(t *testing.T) {
 		t.Fatalf("expected compatibility fallback to actor, got %+v", fb.userCalls)
 	}
 }
+
+func TestRegisterListeners_ChatSessionOrganizedGoesOnlyToCreator(t *testing.T) {
+	bus := events.New()
+	fb := &fakeBroadcaster{}
+	registerListeners(bus, fb)
+
+	folderID := "folder-1"
+	bus.Publish(events.Event{
+		Type:        protocol.EventChatSessionOrganized,
+		WorkspaceID: "ws-1",
+		ActorType:   "member",
+		ActorID:     "creator-1",
+		Payload: protocol.ChatSessionOrganizedPayload{
+			ChatSessionID:   "chat-1",
+			FolderID:        &folderID,
+			RecipientUserID: "creator-1",
+		},
+	})
+
+	if len(fb.userCalls) != 1 || fb.userCalls[0].userID != "creator-1" {
+		t.Fatalf("expected one creator-only SendToUser call, got %+v", fb.userCalls)
+	}
+	if containsJSONKey(fb.userCalls[0].msg, "RecipientUserID") || containsJSONKey(fb.userCalls[0].msg, "recipient_user_id") {
+		t.Fatalf("server-only recipient id leaked to client payload: %s", fb.userCalls[0].msg)
+	}
+	if len(fb.workspaceCalls) != 0 || len(fb.scopeCalls) != 0 || fb.broadcastCalled != 0 {
+		t.Fatalf("personal organization must not use shared fanout: workspaces=%+v scopes=%+v broadcast=%d", fb.workspaceCalls, fb.scopeCalls, fb.broadcastCalled)
+	}
+}

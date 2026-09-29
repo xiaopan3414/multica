@@ -344,6 +344,7 @@ type ChatSessionUpdatedPayload = {
   chat_session_id: string;
   title?: string;
   project_id?: string | null;
+  folder_id?: string | null;
   pinned?: boolean;
   status?: "active" | "archived";
   updated_at?: string;
@@ -379,6 +380,7 @@ export function applyChatSessionUpdatedToCache(
             ...s,
             title: payload.title ?? s.title,
             ...("project_id" in payload ? { project_id: payload.project_id } : {}),
+            ...("folder_id" in payload ? { folder_id: payload.folder_id } : {}),
             pinned: payload.pinned ?? s.pinned,
             status: payload.status ?? s.status,
             updated_at: payload.updated_at ?? s.updated_at,
@@ -965,7 +967,7 @@ export function useRealtimeSync(
       "daemon:heartbeat",
       // Chat events are handled explicitly below; do not double-invalidate.
       "chat:message", "chat:done", "chat:quick_actions", "chat:cancel_finalized", "chat:session_created", "chat:session_read",
-      "chat:session_deleted", "chat:session_updated",
+      "chat:session_deleted", "chat:session_updated", "chat:session_organized",
       // task:message stays out of the prefix path because it fires per
       // streamed message during a long run — invalidating the snapshot on
       // every message would flood the network. Specific chat handlers below
@@ -1665,6 +1667,14 @@ export function useRealtimeSync(
       applyChatSessionUpdatedToCache(qc, id, payload);
     });
 
+    const unsubChatSessionOrganized = ws.on("chat:session_organized", (p) => {
+      const payload = p as ChatSessionUpdatedPayload;
+      chatWsLogger.info("chat:session_organized (personal)", payload);
+      const id = getCurrentWsId();
+      if (!id) return;
+      applyChatSessionUpdatedToCache(qc, id, payload);
+    });
+
     // chat:session_deleted fires after a hard delete. The originating tab has
     // already optimistically dropped the row via useDeleteChatSession; this
     // handler keeps OTHER tabs/devices in sync and also clears the active
@@ -1736,6 +1746,7 @@ export function useRealtimeSync(
       unsubChatSessionRead();
       unsubChatSessionDeleted();
       unsubChatSessionUpdated();
+      unsubChatSessionOrganized();
       if (taskMessageFlushTimer) clearTimeout(taskMessageFlushTimer);
       if (aggregateRefreshTimer) clearTimeout(aggregateRefreshTimer);
       timers.forEach(clearTimeout);

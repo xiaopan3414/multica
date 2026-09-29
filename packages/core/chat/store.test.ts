@@ -188,6 +188,19 @@ describe("chat store — selected project", () => {
   });
 });
 
+describe("chat store — collapsed folders", () => {
+  it("persists collapsed chat groups and removes them when expanded", () => {
+    const storage = memStorage();
+    const store = createChatStore({ storage });
+
+    store.getState().toggleChatFolderCollapsed("folder-1");
+    expect(createChatStore({ storage }).getState().collapsedChatFolderIds).toEqual(["folder-1"]);
+
+    store.getState().toggleChatFolderCollapsed("folder-1");
+    expect(storage.getItem("multica:chat:collapsedFolderIds")).toBeNull();
+  });
+});
+
 describe("chat store — draft attachments", () => {
   let store: ReturnType<typeof createChatStore>;
 

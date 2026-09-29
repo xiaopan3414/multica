@@ -240,7 +240,7 @@ func (h *Handler) writeMikaAgentResponse(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, "failed to open the Mika conversation")
 		return
 	}
-	sessionResp := chatSessionToResponse(session)
+	sessionResp := chatSessionToResponseForUser(session, userID)
 	out := mikaAgentResponse{AgentResponse: resp, OnboardingSession: &sessionResp}
 
 	if created {

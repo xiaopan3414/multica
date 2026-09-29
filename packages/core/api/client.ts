@@ -84,6 +84,7 @@ import type {
   TaskMessagePayload,
   Attachment,
   ChatSession,
+  ChatFolder,
   ChatPinnedAgent,
   ChatMessage,
   ChatMessagesPage,
@@ -243,6 +244,8 @@ import {
   AttachmentResponseSchema,
   CancelTaskResponseSchema,
   ChatDraftRestoresResponseSchema,
+  ChatFolderListSchema,
+  ChatFolderSchema,
   ChatMessageListSchema,
   ChatMessagesPageSchema,
   ChatPendingTaskSchema,
@@ -271,6 +274,8 @@ import {
   DashboardUsageDailyListSchema,
   EMPTY_APP_CONFIG,
   EMPTY_ATTACHMENT,
+  EMPTY_CHAT_FOLDER,
+  EMPTY_CHAT_FOLDER_LIST,
   EMPTY_CHAT_MESSAGE_LIST,
   EMPTY_CHAT_PENDING_TASK,
   EMPTY_PRIORITIZE_QUEUED_CHAT_TASK_RESPONSE,
@@ -3203,11 +3208,49 @@ export class ApiClient {
 
   async updateChatSession(
     id: string,
-    data: { title: string } | { project_id: string | null },
+    data: { title: string } | { project_id: string | null } | { folder_id: string | null },
   ): Promise<ChatSession> {
     return this.fetch(`/api/chat/sessions/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
+    });
+  }
+
+  async listChatFolders(): Promise<ChatFolder[]> {
+    const raw: unknown = await this.fetch("/api/chat/folders");
+    return parseWithFallback(raw, ChatFolderListSchema, EMPTY_CHAT_FOLDER_LIST, {
+      endpoint: "GET /api/chat/folders",
+    });
+  }
+
+  async createChatFolder(name: string): Promise<ChatFolder> {
+    const raw: unknown = await this.fetch("/api/chat/folders", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    return parseWithFallback(raw, ChatFolderSchema, EMPTY_CHAT_FOLDER, {
+      endpoint: "POST /api/chat/folders",
+    });
+  }
+
+  async updateChatFolder(id: string, name: string): Promise<ChatFolder> {
+    const raw: unknown = await this.fetch(`/api/chat/folders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+    return parseWithFallback(raw, ChatFolderSchema, EMPTY_CHAT_FOLDER, {
+      endpoint: "PATCH /api/chat/folders/:id",
+    });
+  }
+
+  async deleteChatFolder(id: string): Promise<void> {
+    await this.fetch(`/api/chat/folders/${id}`, { method: "DELETE" });
+  }
+
+  async reorderChatFolders(folderIds: string[]): Promise<void> {
+    await this.fetch("/api/chat/folders/order", {
+      method: "PUT",
+      body: JSON.stringify({ folder_ids: folderIds }),
     });
   }
 

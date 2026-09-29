@@ -332,6 +332,16 @@ type ChatSessionUpdatedPayload struct {
 	UpdatedAt string  `json:"updated_at"`
 }
 
+// ChatSessionOrganizedPayload is personal to the chat creator. FolderID uses
+// a pointer so moving a session back to the ungrouped section emits JSON null.
+// RecipientUserID is consumed by the server listener and never sent to clients.
+type ChatSessionOrganizedPayload struct {
+	ChatSessionID   string  `json:"chat_session_id"`
+	FolderID        *string `json:"folder_id"`
+	UpdatedAt       string  `json:"updated_at"`
+	RecipientUserID string  `json:"-"`
+}
+
 // DaemonHeartbeatRequestPayload is sent from daemon to server over WebSocket
 // to update last_seen_at and pull pending actions for a single runtime.
 // Mirrors the body of POST /api/daemon/heartbeat so both transports share

@@ -13,6 +13,7 @@ import type {
   BillingTopupsPage,
   BillingTransactionsPage,
   CancelTaskResponse,
+  ChatFolder,
   ChatMessage,
   ChatDraftRestoresResponse,
   ChatPendingTask,
@@ -827,6 +828,28 @@ export const ChatMessageSchema = z.object({
 
 export const ChatMessageListSchema = z.array(ChatMessageSchema).default([]);
 export const EMPTY_CHAT_MESSAGE_LIST: ChatMessage[] = [];
+
+export const ChatFolderSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string(),
+  creator_id: z.string(),
+  name: z.string(),
+  position: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).loose();
+
+export const ChatFolderListSchema = z.array(ChatFolderSchema).default([]);
+export const EMPTY_CHAT_FOLDER: ChatFolder = {
+  id: "",
+  workspace_id: "",
+  creator_id: "",
+  name: "",
+  position: 0,
+  created_at: "",
+  updated_at: "",
+};
+export const EMPTY_CHAT_FOLDER_LIST: ChatFolder[] = [];
 
 export const ChatMessagesPageSchema = z.object({
   messages: z.array(ChatMessageSchema).default([]),
