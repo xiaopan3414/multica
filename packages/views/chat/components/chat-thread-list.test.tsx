@@ -233,6 +233,25 @@ describe("ChatThreadList agent identity", () => {
   });
 });
 
+describe("ChatThreadList agent filter", () => {
+  it("opens the filter and selects an agent without a missing group crash", async () => {
+    const beta = { id: "agent-2", name: "Beta" } as unknown as Agent;
+    const alphaSession = makeSession({ id: "alpha-chat", agent_id: agent.id });
+    const betaSession = makeSession({ id: "beta-chat", agent_id: beta.id });
+
+    renderList(null, {
+      renderedSessions: [alphaSession, betaSession],
+      renderedAgents: [agent, beta],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: enChat.list.filter_by_agent }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: beta.name }));
+
+    expect(screen.queryByText("Chat alpha-chat")).not.toBeInTheDocument();
+    expect(screen.getByText("Chat beta-chat")).toBeInTheDocument();
+  });
+});
+
 // Touch has no hover, so the hover strip's actions also live in a per-row menu.
 describe("ChatThreadList compact row menu", () => {
   beforeEach(() => {

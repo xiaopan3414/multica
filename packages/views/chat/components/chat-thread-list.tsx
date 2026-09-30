@@ -47,6 +47,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -625,20 +626,22 @@ export function ChatThreadList({
           }
         />
         <DropdownMenuContent align="start" className="w-52">
-          <DropdownMenuLabel>{t(($) => $.list.filter_by_agent)}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={agentFilterId ?? "all"}
-            onValueChange={(value) => setAgentFilterId(value === "all" ? null : value)}
-          >
-            <DropdownMenuRadioItem value="all">
-              {t(($) => $.list.all_agents)}
-            </DropdownMenuRadioItem>
-            {filterAgents.map((agent) => (
-              <DropdownMenuRadioItem key={agent.id} value={agent.id}>
-                <span className="truncate">{agent.name}</span>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{t(($) => $.list.filter_by_agent)}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={agentFilterId ?? "all"}
+              onValueChange={(value) => setAgentFilterId(value === "all" ? null : value)}
+            >
+              <DropdownMenuRadioItem value="all">
+                {t(($) => $.list.all_agents)}
               </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
+              {filterAgents.map((agent) => (
+                <DropdownMenuRadioItem key={agent.id} value={agent.id}>
+                  <span className="truncate">{agent.name}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       <Button
