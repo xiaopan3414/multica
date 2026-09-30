@@ -51,6 +51,7 @@ jobs:
         working-directory: packages/views
         run: >-
           pnpm exec vitest run
+          chat/components/chat-thread-list.test.tsx
           locales/desktop-daemon-copy.test.ts
           auth/login-page.test.tsx
           agents/components/agent-picker-order.test.ts
