@@ -813,6 +813,8 @@ export interface AgentWorkingDirectory {
   runtime_name: string;
   local_path: string;
   available: boolean;
+  directory_lock_enabled: boolean;
+  directory_lock_supported: boolean;
 }
 
 /**

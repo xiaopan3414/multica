@@ -1455,6 +1455,19 @@ export class ApiClient {
     );
   }
 
+  async updateAgentDirectoryLock(id: string, enabled: boolean): Promise<AgentWorkingDirectory> {
+    const raw = await this.fetch<unknown>(`/api/agents/${id}/directory-lock`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
+    return parseWithFallback(
+      raw,
+      AgentWorkingDirectorySchema,
+      { ...EMPTY_AGENT_WORKING_DIRECTORY, agent_id: id },
+      { endpoint: "PUT /api/agents/{id}/directory-lock" },
+    );
+  }
+
   async createAgent(data: CreateAgentRequest): Promise<Agent> {
     return this.fetch("/api/agents", {
       method: "POST",

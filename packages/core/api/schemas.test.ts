@@ -1134,6 +1134,8 @@ describe("AgentWorkingDirectorySchema response drift", () => {
       runtime_name: { label: "Office PC" },
       local_path: ["D:\\work"],
       available: "yes",
+      directory_lock_enabled: "true",
+      directory_lock_supported: 1,
       future_field: true,
     });
     expect(parsed).toMatchObject({
@@ -1143,6 +1145,8 @@ describe("AgentWorkingDirectorySchema response drift", () => {
       runtime_name: "",
       local_path: "",
       available: false,
+      directory_lock_enabled: false,
+      directory_lock_supported: false,
       future_field: true,
     });
   });

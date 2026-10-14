@@ -105,7 +105,7 @@ func buildSharedLocalDirectoryBlock(shared bool) string {
 	var b strings.Builder
 	b.WriteString("## Shared working directory\n\n")
 	b.WriteString("Your working directory is the user's own checkout, and another task on this machine may be editing it while you run. This turn deliberately neither holds nor waits for the directory lock — that is what keeps a conversation from queueing behind a long build.\n\n")
-	b.WriteString("Read freely. Treat writing the way the user treats saving a file in their own editor: reasonable for a small change they just asked for, wrong for a broad refactor, a dependency install, or a build that rewrites many files. Work that size belongs in an issue task, which is serialised against the other writers. If you do write, say so in your reply — a sibling task may be looking at the same file.\n\n")
+	b.WriteString("Read freely and coordinate overlapping edits before changing shared files. Avoid changing the checked-out branch or removing another session's work. For operations that require serialization, ask the user to enable this agent's Directory lock setting. Only tasks whose agents enable that setting participate in the lock.\n\n")
 	return b.String()
 }
 

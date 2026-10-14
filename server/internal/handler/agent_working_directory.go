@@ -11,17 +11,20 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 const maxAgentWorkingDirectoryLength = 4096
 
 type AgentWorkingDirectoryResponse struct {
-	AgentID     string `json:"agent_id"`
-	RuntimeID   string `json:"runtime_id,omitempty"`
-	DaemonID    string `json:"daemon_id,omitempty"`
-	RuntimeName string `json:"runtime_name,omitempty"`
-	LocalPath   string `json:"local_path"`
-	Available   bool   `json:"available"`
+	AgentID                string `json:"agent_id"`
+	RuntimeID              string `json:"runtime_id,omitempty"`
+	DaemonID               string `json:"daemon_id,omitempty"`
+	RuntimeName            string `json:"runtime_name,omitempty"`
+	LocalPath              string `json:"local_path"`
+	Available              bool   `json:"available"`
+	DirectoryLockEnabled   bool   `json:"directory_lock_enabled"`
+	DirectoryLockSupported bool   `json:"directory_lock_supported"`
 }
 
 type UpdateAgentWorkingDirectoryRequest struct {
@@ -96,10 +99,12 @@ func (h *Handler) workingDirectoryRuntimeForAgent(r *http.Request, agent db.Agen
 
 func agentWorkingDirectoryResponse(agent db.Agent, runtime db.AgentRuntime, available bool) (AgentWorkingDirectoryResponse, error) {
 	resp := AgentWorkingDirectoryResponse{
-		AgentID:   uuidToString(agent.ID),
-		RuntimeID: uuidToString(agent.RuntimeID),
-		LocalPath: "",
-		Available: available,
+		AgentID:                uuidToString(agent.ID),
+		RuntimeID:              uuidToString(agent.RuntimeID),
+		LocalPath:              "",
+		Available:              available,
+		DirectoryLockEnabled:   protocol.AgentDirectoryLockEnabled(agent.RuntimeConfig),
+		DirectoryLockSupported: available && runtimeHasCapability(runtime.Metadata, protocol.DaemonCapabilityDirectoryLockV1),
 	}
 	if !available {
 		return resp, nil
@@ -128,6 +133,49 @@ func (h *Handler) GetAgentWorkingDirectory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	resp, err := agentWorkingDirectoryResponse(agent, runtime, available)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load agent working directory")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) UpdateAgentDirectoryLock(w http.ResponseWriter, r *http.Request) {
+	agent, ok := h.loadAgentForUser(w, r, chi.URLParam(r, "id"))
+	if !ok || !h.canManageAgent(w, r, agent) {
+		return
+	}
+	var req struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Enabled == nil {
+		writeError(w, http.StatusBadRequest, "enabled must be a boolean")
+		return
+	}
+	runtime, available, err := h.workingDirectoryRuntimeForAgent(r, agent)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load agent runtime")
+		return
+	}
+	if !available {
+		writeError(w, http.StatusConflict, "agent must be bound to a local runtime")
+		return
+	}
+	if *req.Enabled && !runtimeHasCapability(runtime.Metadata, protocol.DaemonCapabilityDirectoryLockV1) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error": "Update Multica on this machine before enabling the directory lock.",
+			"code":  "daemon_version_unsupported",
+		})
+		return
+	}
+	updated, err := h.Queries.SetAgentDirectoryLockEnabled(r.Context(), db.SetAgentDirectoryLockEnabledParams{
+		AgentID: agent.ID, Enabled: *req.Enabled,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save directory lock")
+		return
+	}
+	resp, err := agentWorkingDirectoryResponse(updated, runtime, true)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load agent working directory")
 		return

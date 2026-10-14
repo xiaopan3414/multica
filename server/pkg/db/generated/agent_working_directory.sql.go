@@ -61,6 +61,61 @@ func (q *Queries) DeleteAgentWorkingDirectory(ctx context.Context, arg DeleteAge
 	return i, err
 }
 
+const setAgentDirectoryLockEnabled = `-- name: SetAgentDirectoryLockEnabled :one
+UPDATE agent
+SET runtime_config = jsonb_set(
+    CASE WHEN jsonb_typeof(runtime_config) = 'object' THEN runtime_config ELSE '{}'::jsonb END,
+        '{local_directory_lock_enabled}',
+        to_jsonb($1::boolean),
+        true
+    ),
+    updated_at = now()
+WHERE id = $2
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, runtime_id, instructions, archived_at, archived_by, custom_env, custom_args, mcp_config, model, thinking_level, composio_toolkit_allowlist, permission_mode, kind, system_key, disabled_runtime_skills, service_tier, local_working_directories
+`
+
+type SetAgentDirectoryLockEnabledParams struct {
+	Enabled bool        `json:"enabled"`
+	AgentID pgtype.UUID `json:"agent_id"`
+}
+
+func (q *Queries) SetAgentDirectoryLockEnabled(ctx context.Context, arg SetAgentDirectoryLockEnabledParams) (Agent, error) {
+	row := q.db.QueryRow(ctx, setAgentDirectoryLockEnabled, arg.Enabled, arg.AgentID)
+	var i Agent
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.RuntimeMode,
+		&i.RuntimeConfig,
+		&i.Visibility,
+		&i.Status,
+		&i.MaxConcurrentTasks,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Description,
+		&i.RuntimeID,
+		&i.Instructions,
+		&i.ArchivedAt,
+		&i.ArchivedBy,
+		&i.CustomEnv,
+		&i.CustomArgs,
+		&i.McpConfig,
+		&i.Model,
+		&i.ThinkingLevel,
+		&i.ComposioToolkitAllowlist,
+		&i.PermissionMode,
+		&i.Kind,
+		&i.SystemKey,
+		&i.DisabledRuntimeSkills,
+		&i.ServiceTier,
+		&i.LocalWorkingDirectories,
+	)
+	return i, err
+}
+
 const setAgentWorkingDirectory = `-- name: SetAgentWorkingDirectory :one
 UPDATE agent
 SET local_working_directories = jsonb_set(

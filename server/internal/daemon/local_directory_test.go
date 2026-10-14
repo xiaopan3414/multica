@@ -153,6 +153,7 @@ func TestAcquireLocalDirectoryLockSkipsSquadLeaderTasks(t *testing.T) {
 
 	worker := Task{
 		ID:               "worker-task",
+		Agent:            &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":true}`)},
 		ProjectResources: resources,
 	}
 	assignment, err := localDirectoryAssignmentForTask(worker, daemonID)
@@ -738,7 +739,8 @@ func TestAcquireLocalDirectoryLock_CancelDuringWait(t *testing.T) {
 		t.Fatalf("marshal ref: %v", err)
 	}
 	task := Task{
-		ID: newTaskID,
+		ID:    newTaskID,
+		Agent: &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":true}`)},
 		ProjectResources: []ProjectResourceData{
 			{ID: "r1", ResourceType: localDirectoryResourceType, ResourceRef: ref},
 		},
@@ -823,7 +825,8 @@ func TestAcquireLocalDirectoryLock_ParentCancellationReportsWaitFailure(t *testi
 		t.Fatalf("marshal ref: %v", err)
 	}
 	task := Task{
-		ID: "task-waiter",
+		ID:    "task-waiter",
+		Agent: &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":true}`)},
 		ProjectResources: []ProjectResourceData{
 			{ID: "r1", ResourceType: localDirectoryResourceType, ResourceRef: ref},
 		},
@@ -1105,10 +1108,7 @@ func TestValidateExecutionModeAcceptsKnownModes(t *testing.T) {
 	}
 }
 
-// TestLocalDirectoryLockExempt pins the discriminator itself. IsLeaderTask is
-// listed explicitly because it is the flag the original carve-out keyed on, and
-// the whole defect in issue #7344 was that it is false on every chat task the
-// server has ever inserted.
+// Directory locking is opt-in, independent of the task's chat or issue scope.
 func TestLocalDirectoryLockExempt(t *testing.T) {
 	t.Parallel()
 
@@ -1119,9 +1119,12 @@ func TestLocalDirectoryLockExempt(t *testing.T) {
 	}{
 		{"chat task", Task{ChatSessionID: "sess-1"}, true},
 		{"chat task dispatched in the leader role", Task{ChatSessionID: "sess-1", IsLeaderTask: true}, true},
-		{"issue task", Task{IssueID: "issue-1"}, false},
-		{"issue task in the leader role", Task{IssueID: "issue-1", IsLeaderTask: true}, false},
-		{"autopilot task", Task{AutopilotRunID: "run-1"}, false},
+		{"issue task defaults unlocked", Task{IssueID: "issue-1"}, true},
+		{"leader task defaults unlocked", Task{IssueID: "issue-1", IsLeaderTask: true}, true},
+		{"autopilot defaults unlocked", Task{AutopilotRunID: "run-1"}, true},
+		{"explicitly unlocked", Task{Agent: &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":false}`)}}, true},
+		{"locked issue", Task{IssueID: "issue-1", Agent: &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":true}`)}}, false},
+		{"locked chat", Task{ChatSessionID: "sess-1", Agent: &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":true}`)}}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1146,11 +1149,17 @@ func TestChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T) {
 		if private {
 			name = "private agent directory"
 		}
-		t.Run(name, func(t *testing.T) { testChatTaskSkipsPathMutexButKeepsAssignment(t, private) })
+		for _, chat := range []bool{false, true} {
+			taskType := "issue"
+			if chat {
+				taskType = "chat"
+			}
+			t.Run(name+"/"+taskType, func(t *testing.T) { testUnlockedTaskSkipsPathMutexButKeepsAssignment(t, private, chat) })
+		}
 	}
 }
 
-func testChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T, private bool) {
+func testUnlockedTaskSkipsPathMutexButKeepsAssignment(t *testing.T, private bool, isChat bool) {
 	t.Helper()
 	t.Parallel()
 
@@ -1165,7 +1174,11 @@ func testChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T, private bool) {
 	}
 
 	worker := Task{ID: "worker-task", IssueID: "issue-1", ProjectResources: resources}
+	worker.Agent = &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":true}`)}
 	chat := Task{ID: "chat-task", ChatSessionID: "sess-1", ProjectResources: resources}
+	if !isChat {
+		chat.ID, chat.ChatSessionID, chat.IssueID = "unlocked-issue-task", "", "issue-2"
+	}
 	if private {
 		worker.AgentID = "agent-1"
 		chat.AgentID = "agent-1"
@@ -1306,10 +1319,17 @@ func TestChatTaskOnWorktreeResourceKeepsAssignment(t *testing.T) {
 	}
 }
 
-// TestIssueTasksStillSerialiseOnPathMutex is the negative control: the
-// exemption must not have widened into "nobody locks any more". Two issue tasks
-// on one in_place directory still take turns.
+// Explicitly locked issue tasks still take turns on an in-place directory.
 func TestIssueTasksStillSerialiseOnPathMutex(t *testing.T) {
+	testLockedTasksSerialiseOnPathMutex(t, false)
+}
+
+func TestLockedChatTasksSerialiseOnPathMutex(t *testing.T) {
+	testLockedTasksSerialiseOnPathMutex(t, true)
+}
+
+func testLockedTasksSerialiseOnPathMutex(t *testing.T, chat bool) {
+	t.Helper()
 	t.Parallel()
 
 	const daemonID = "d-mine"
@@ -1323,6 +1343,15 @@ func TestIssueTasksStillSerialiseOnPathMutex(t *testing.T) {
 	}
 	first := Task{ID: "issue-task-1", IssueID: "issue-1", ProjectResources: resources}
 	second := Task{ID: "issue-task-2", IssueID: "issue-2", ProjectResources: resources}
+	first.Agent = &AgentData{RuntimeConfig: json.RawMessage(`{"local_directory_lock_enabled":true}`)}
+	second.Agent = first.Agent
+	if chat {
+		first.IssueID, second.IssueID = "", ""
+		first.ChatSessionID, second.ChatSessionID = "session-1", "session-2"
+		first.AgentID, second.AgentID = "agent-1", "agent-1"
+		first.AgentWorkingDirectory, second.AgentWorkingDirectory = tmp, tmp
+		first.AgentWorkingDirectoryResolved, second.AgentWorkingDirectoryResolved = true, true
+	}
 
 	// Parking calls back to the server to flip the row into
 	// waiting_local_directory, so this daemon — unlike the exempt-path ones

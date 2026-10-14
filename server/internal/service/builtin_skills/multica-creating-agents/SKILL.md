@@ -119,6 +119,16 @@ multica agent copy <source-agent-id> --runtime-id <target> --model <model>  # cr
 
 ## Field contracts
 
+Directory locking is off by default. Human agent owners and workspace owners/admins can change it in the
+agent's working-directory settings or with `PUT /api/agents/{id}/directory-lock`, body
+`{"enabled":true}` (or `false`). The dedicated endpoint preserves the directory and unrelated runtime configuration.
+It requires a local runtime; enabling requires its `directory-lock-v1` capability. The persisted boolean is
+`runtime_config.local_directory_lock_enabled`, re-read on each claim. When enabled, chat and issue tasks using
+an in-place local directory participate in its real-path mutex; only opted-in tasks share the mutex.
+Already claimed tasks retain their previous setting. Same-session ordering and agent/daemon capacity remain
+independent of this switch. A daemon without the capability cannot claim an opted-in local-directory task;
+the server cancels it with an explicit update instruction.
+
 | Field | Persisted as | Validated? | Consumed by |
 |---|---|---|---|
 | `name` | `agent.name` | required, 400 if empty | listings, runtime payload |

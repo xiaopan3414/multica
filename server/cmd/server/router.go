@@ -2033,6 +2033,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Put("/", h.UpdateAgent)
 					r.With(handler.RequireHumanActor).Get("/working-directory", h.GetAgentWorkingDirectory)
 					r.With(handler.RequireHumanActor).Put("/working-directory", h.UpdateAgentWorkingDirectory)
+					r.With(handler.RequireHumanActor).Put("/directory-lock", h.UpdateAgentDirectoryLock)
 					r.With(handler.RequireHumanActor).Delete("/working-directory", h.DeleteAgentWorkingDirectory)
 					r.Post("/archive", h.ArchiveAgent)
 					r.Post("/restore", h.RestoreAgent)

@@ -3135,8 +3135,8 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		}
 	}
 
-	// Last gate before dispatch: refuse to hand a worktree-mode local_directory
-	// task to a daemon that cannot implement the mode.
+	// Last gate before dispatch: enforce local-directory capabilities against
+	// the daemon claiming now, including a downgrade since the setting was saved.
 	//
 	// The save-time gate in project_resource.go cannot cover this. It checks the
 	// version at the moment the resource is written; a machine downgraded
@@ -3145,12 +3145,19 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 	// user asked to isolate. That is the exact outcome worktree mode exists to
 	// prevent, so it fails closed here, against the version of the runtime that
 	// is actually claiming.
-	if reason := worktreeClaimBlockReason(
+	gate := "worktree"
+	reason := worktreeClaimBlockReason(
 		resp.ProjectResources,
 		runtime,
 		requestHasClientCapability(r, protocol.DaemonCapabilityLocalWorktreeV1),
-	); reason != "" {
-		slog.Error("task claim: runtime too old for worktree mode; cancelling rather than running in place",
+	)
+	if reason == "" {
+		gate = "directory_lock"
+		reason = directoryLockClaimBlockReason(agent.RuntimeConfig, resp.AgentWorkingDirectory,
+			resp.ProjectResources, runtime, requestHasClientCapability(r, protocol.DaemonCapabilityDirectoryLockV1))
+	}
+	if reason != "" {
+		slog.Error("task claim: runtime lacks required local-directory capability; cancelling",
 			"task_id", uuidToString(task.ID),
 			"runtime_id", runtimeID,
 			"daemon_id", runtime.DaemonID.String,
@@ -3178,26 +3185,46 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			// reason. Requeue it instead — the next claim re-runs this gate
 			// and retries the cancel — and report a 5xx so the daemon reads
 			// this as a transient server problem, not a claim refusal.
-			slog.Error("task claim: cancel after worktree version gate failed; requeueing so the gate can run again",
+			slog.Error("task claim: cancel after local-directory capability gate failed; requeueing",
 				"task_id", uuidToString(task.ID), "error", cerr)
 			if _, rerr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), *task); rerr != nil {
-				slog.Error("task claim: requeue after worktree-gate cancel failure failed; stale reclaim will recover it",
+				slog.Error("task claim: requeue after local-directory gate cancel failure failed; stale reclaim will recover it",
 					"task_id", uuidToString(task.ID), "error", rerr)
 			}
 			return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, &claimBuildFailure{
-				outcome: "error_worktree_gate_cancel",
+				outcome: "error_" + gate + "_gate_cancel",
 				status:  http.StatusInternalServerError,
-				message: "failed to cancel a worktree task blocked by daemon version; task requeued",
+				message: "failed to cancel a task blocked by a local-directory capability; task requeued",
 			}
 		}
 		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, &claimBuildFailure{
-			outcome: "error_worktree_daemon_version",
+			outcome: "error_" + gate + "_daemon_version",
 			status:  http.StatusUnprocessableEntity,
 			message: reason,
 		}
 	}
 
 	return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil
+}
+
+func directoryLockClaimBlockReason(config []byte, privatePath string, resources []ProjectResourceData, runtime db.AgentRuntime, capable bool) string {
+	if capable || !protocol.AgentDirectoryLockEnabled(config) || !runtime.DaemonID.Valid {
+		return ""
+	}
+	usesDirectory := strings.TrimSpace(privatePath) != ""
+	for _, res := range resources {
+		if res.ResourceType != "local_directory" {
+			continue
+		}
+		var ref localDirectoryRef
+		if json.Unmarshal(res.ResourceRef, &ref) == nil && ref.DaemonID == runtime.DaemonID.String && ref.ExecutionMode != localDirectoryModeWorktree {
+			usesDirectory = true
+		}
+	}
+	if !usesDirectory {
+		return ""
+	}
+	return "This agent's directory lock is enabled, but this machine's Multica runtime does not support it. Update Multica on this machine, then re-run the task."
 }
 
 // worktreeClaimBlockReason returns a user-facing reason when this runtime must

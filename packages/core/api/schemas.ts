@@ -1803,6 +1803,8 @@ export const AgentWorkingDirectorySchema = z.object({
   runtime_name: z.string().catch("").default(""),
   local_path: z.string().catch("").default(""),
   available: z.boolean().catch(false).default(false),
+  directory_lock_enabled: z.boolean().catch(false).default(false),
+  directory_lock_supported: z.boolean().catch(false).default(false),
 }).loose();
 
 export const EMPTY_AGENT_WORKING_DIRECTORY: AgentWorkingDirectory = {
@@ -1812,6 +1814,8 @@ export const EMPTY_AGENT_WORKING_DIRECTORY: AgentWorkingDirectory = {
   runtime_name: "",
   local_path: "",
   available: false,
+  directory_lock_enabled: false,
+  directory_lock_supported: false,
 };
 
 // Task cancellation (`POST /api/tasks/:id/cancel`) is consumed directly by

@@ -10,9 +10,11 @@ import {
   agentWorkingDirectoryOptions,
 } from "@multica/core/agents/queries";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { workspaceKeys } from "@multica/core/workspace/queries";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Label } from "@multica/ui/components/ui/label";
+import { Switch } from "@multica/ui/components/ui/switch";
 import {
   SettingsCard,
   SettingsRow,
@@ -84,6 +86,20 @@ export function AgentWorkingDirectorySettings({
     },
   });
   const { mutateAsync, isPending } = mutation;
+
+  const lockMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.updateAgentDirectoryLock(agentId, enabled),
+    onSuccess: async (data) => {
+      queryClient.setQueryData(agentWorkingDirectoryKeys.detail(wsId, agentId), data);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: workspaceKeys.agent(wsId, agentId) }),
+        queryClient.invalidateQueries({ queryKey: workspaceKeys.agents(wsId), exact: true }),
+      ]);
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : labels.save_failed);
+    },
+  });
 
   useEffect(() => {
     if (!query.data || dirty) return;
@@ -175,7 +191,7 @@ export function AgentWorkingDirectorySettings({
 
   const data = query.data;
   const unavailable = data ? !data.available : false;
-  const busy = query.isLoading || isPending || picking;
+  const busy = query.isLoading || isPending || lockMutation.isPending || picking;
   const runtimeName = data?.runtime_name || data?.daemon_id || "";
 
   return (
@@ -260,6 +276,17 @@ export function AgentWorkingDirectorySettings({
               </Button>
             </div>
           </div>
+        </SettingsRow>
+        <SettingsRow label={t(($) => $.inspector.private_working_directory.directory_lock)}>
+          <Switch
+            aria-label={t(($) => $.inspector.private_working_directory.directory_lock)}
+            checked={data?.directory_lock_enabled === true}
+            disabled={busy || unavailable || (data?.directory_lock_supported !== true && data?.directory_lock_enabled !== true)}
+            title={data?.directory_lock_supported !== true
+              ? t(($) => $.inspector.private_working_directory.lock_update_required)
+              : undefined}
+            onCheckedChange={(enabled) => lockMutation.mutate(enabled)}
+          />
         </SettingsRow>
       </SettingsCard>
     </SettingsSection>

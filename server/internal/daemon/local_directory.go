@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // localDirectoryResourceType is the project_resource discriminator the daemon
@@ -170,35 +172,16 @@ func (d *Daemon) shouldRegisterTaskRepos(task Task) bool {
 	return !usesPrivateAgentDirectory
 }
 
-// localDirectoryLockExempt reports whether a task may run inside an in_place
-// local_directory WITHOUT serialising on the per-path mutex. It is asked only
-// after an assignment has been resolved and validated, so an exempt task still
-// runs in the user's directory — it just doesn't queue for it.
-//
-// What the mutex actually protects: two long coding runs interleaving two sets
-// of edits into one working tree. It was never a general write barrier and
-// cannot become one — the user's own editor, their terminal, and any external
-// script write to that same tree unsynchronised, and always have. So the
-// question a task must answer to earn the lock is not "could it ever write?"
-// (everything could) but "is it a second heavyweight writer?".
-//
-// A chat turn is not. It is a conversation that reads the tree to answer
-// questions and at most saves a file the way the user's own Cmd+S does — the
-// risk class the lock already declines to cover. Serialising it bought nothing
-// and muted the squad leader for the length of every build (issue #7344).
-//
-// Keyed on ChatSessionID because that is the daemon's only chat discriminator
-// (see Task.ChatSessionID). IsLeaderTask cannot serve here even though the
-// comment above it describes chat's semantics exactly: the server never writes
-// that column on the chat-task insert path (service.EnqueueChatTask →
-// db.CreateChatTaskParams has no such field), so it is false on every chat
-// turn ever dispatched.
+// localDirectoryLockExempt keeps the configured directory while skipping its
+// mutex unless this agent explicitly enabled directory serialization. The
+// setting applies to both chat and issue tasks; per-session ordering remains
+// enforced by the server claim transaction.
 func localDirectoryLockExempt(task Task) bool {
-	return task.ChatSessionID != ""
+	return task.Agent == nil || !protocol.AgentDirectoryLockEnabled(task.Agent.RuntimeConfig)
 }
 
 func localDirectoryAssignmentLockExempt(task Task, assignment *localDirectoryAssignment) bool {
-	// A private mapping chooses the directory; it does not reduce chat capacity.
+	// Directory serialization is opt-in for both project and private mappings.
 	return assignment != nil && localDirectoryLockExempt(task)
 }
 

@@ -78,7 +78,9 @@ jobs:
         working-directory: server
         run: |
           go test ./internal/service -run '^(TestClaimTasksForRuntimes_.*|TestClaimTaskConcurrentCapacityRespected)$' -count=1
-          go test -race ./internal/daemon -run '^(TestChatTaskSkipsPathMutexButKeepsAssignment|TestLocalDirectory.*|TestPrivateAgentWorking.*|TestSynchronizedAgentWorkingDirectory.*)$' -count=1
+          go test ./pkg/protocol -run '^TestAgentDirectoryLockEnabled$' -count=1
+          go test ./internal/handler -run '^(TestAgentDirectoryLockAPI.*|TestDirectoryLockClaimBlockReason|TestClaimTask_DirectoryLockGate)$' -count=1
+          go test -race ./internal/daemon -run '^(TestChatTaskSkipsPathMutexButKeepsAssignment|TestIssueTasksStillSerialiseOnPathMutex|TestLockedChatTasksSerialiseOnPathMutex|TestLocalDirectory.*|TestPrivateAgentWorking.*|TestSynchronizedAgentWorkingDirectory.*)$' -count=1
 
       - name: Test core configuration
         working-directory: packages/core

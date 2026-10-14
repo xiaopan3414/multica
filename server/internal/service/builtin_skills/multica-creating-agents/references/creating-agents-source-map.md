@@ -7,6 +7,13 @@ surrounding context (not the number) is the anchor.
 
 ## Verification
 
+Directory lock: `server/internal/handler/agent_working_directory.go` exposes the owner/admin-only settings API,
+checks the runtime's `directory-lock-v1` capability, and uses `SetAgentDirectoryLockEnabled` in
+`server/pkg/db/queries/agent_working_directory.sql` to update one JSONB key. The claim gate
+`directoryLockClaimBlockReason` in `server/internal/handler/daemon.go` checks the claiming client's capability.
+`AgentDirectoryLockEnabled` in `server/pkg/protocol/directory_lock.go` reads the default-off setting;
+`server/internal/daemon/local_directory.go` applies it to the real-path mutex.
+
 ```bash
 # Conformance eval for this skill (and the shared template invariants):
 go test ./internal/service -run TestCreatingAgentsSkillCoversAgentCreationContracts

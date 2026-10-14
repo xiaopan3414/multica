@@ -82,7 +82,7 @@ jobs:
 
       - name: Test CLI chat concurrency and workspace cleanup
         working-directory: server
-        run: go test ./internal/daemon -run '^(TestRunGC_SkipsOrdinaryProjectDirectories|TestSynchronizedAgentWorkingDirectoryOverridesAndResetsLegacyMapping|TestChatTaskSkipsPathMutexButKeepsAssignment|TestPrivateAgentWorking.*|TestLocalDirectory.*)$' -count=1
+        run: go test ./pkg/protocol ./internal/daemon -run '^(TestAgentDirectoryLockEnabled|TestRunGC_SkipsOrdinaryProjectDirectories|TestSynchronizedAgentWorkingDirectoryOverridesAndResetsLegacyMapping|TestChatTaskSkipsPathMutexButKeepsAssignment|TestIssueTasksStillSerialiseOnPathMutex|TestLockedChatTasksSerialiseOnPathMutex|TestPrivateAgentWorking.*|TestLocalDirectory.*)$' -count=1
 
       - name: Typecheck Desktop and shared packages
         run: pnpm typecheck
