@@ -113,8 +113,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Committed source restoration failed." }
           node scripts/verify-git-source-archive.mjs $archive $env:GITHUB_WORKSPACE
           if ($LASTEXITCODE -ne 0) { throw "Pre-package Git blob verification failed." }
-          git update-index --refresh
-          if ($LASTEXITCODE -ne 0) { throw "Source index differs from committed archive." }
+          # Refresh checkout conversion state only after every source byte matches Git.
+          git add --renormalize -- .
+          if ($LASTEXITCODE -ne 0) { throw "Source index normalization failed." }
+          git diff --cached --exit-code HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Normalized source index differs from committed Git blobs." }
           git diff --exit-code HEAD
           if ($LASTEXITCODE -ne 0) { throw "Uncommitted source changes before packaging." }
           $description = git describe --tags --match 'v[0-9]*' --always --dirty
