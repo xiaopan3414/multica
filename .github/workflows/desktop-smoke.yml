@@ -2,6 +2,11 @@ name: Desktop Smoke Build
 
 on:
   workflow_dispatch:
+    inputs:
+      artifact_label:
+        description: Label used for the downloadable Actions artifact
+        required: true
+        default: feiq-v0.4.34.9
 
 permissions:
   contents: read
@@ -39,6 +44,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify committed source archive bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $archive = Join-Path $env:RUNNER_TEMP "multica-committed-source.tar"
+          git -c core.autocrlf=false -c core.eol=lf archive --format=tar --output=$archive HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Git source archive failed." }
+          tar -xf $archive -C $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { throw "Source archive extraction failed." }
+          node scripts/verify-git-source-archive.mjs $archive $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { throw "Git blob SHA-256 verification failed." }
+
       - name: Test agent owner delegation core
         working-directory: packages/core
         run: >-
@@ -59,6 +76,7 @@ jobs:
           agents/components/runtime-picker.test.tsx
           agents/create/create-agent-ui.test.ts
           agents/create/use-create-agent-submit.test.tsx
+          agents/components/agent-working-directory-settings.test.tsx
 
       - name: Test Desktop CLI startup behavior
         working-directory: apps/desktop
@@ -75,6 +93,10 @@ jobs:
         working-directory: server
         run: go test ./cmd/desktop-update-server -count=1
 
+      - name: Test opt-in directory locks and chat concurrency
+        working-directory: server
+        run: go test ./pkg/protocol ./internal/daemon -run '^(TestAgentDirectoryLockEnabled|TestRunGC_SkipsOrdinaryProjectDirectories|TestSynchronizedAgentWorkingDirectoryOverridesAndResetsLegacyMapping|TestChatTaskSkipsPathMutexButKeepsAssignment|TestIssueTasksStillSerialiseOnPathMutex|TestLockedChatTasksSerialiseOnPathMutex|TestPrivateAgentWorking.*|TestLocalDirectory.*)$' -count=1
+
       - name: Typecheck Desktop and shared packages
         run: pnpm typecheck
 
@@ -86,6 +108,8 @@ jobs:
 
       - name: Create checksums and build information
         shell: pwsh
+        env:
+          ARTIFACT_LABEL: ${{ inputs.artifact_label }}
         run: |
           $ErrorActionPreference = "Stop"
           $dist = Join-Path $PWD "apps/desktop/dist"
@@ -104,7 +128,7 @@ jobs:
           )
 
           $buildInfo = @(
-            "Artifact label: feiq-v0.4.34.16",
+            "Artifact label: $env:ARTIFACT_LABEL",
             "Source commit: $(& git rev-parse HEAD)",
             "Source version: $(& git describe --tags --match 'v[0-9]*' --always)",
             "Platform: Windows x64",
@@ -118,6 +142,8 @@ jobs:
 
       - name: Build Desktop update service bundle
         shell: pwsh
+        env:
+          ARTIFACT_LABEL: ${{ inputs.artifact_label }}
         run: |
           $ErrorActionPreference = "Stop"
           $bundle = Join-Path $PWD "artifacts/desktop-update-service"
@@ -155,7 +181,7 @@ jobs:
           [System.IO.File]::WriteAllLines(
             (Join-Path $bundle "BUILD-INFO.txt"),
             @(
-              "Artifact label: feiq-v0.4.34.16",
+              "Artifact label: $env:ARTIFACT_LABEL",
               "Source commit: $commit",
               "Update feed: http://10.0.37.30:8090/windows/x64",
               "Service platforms: Linux amd64, Windows x64"
@@ -176,7 +202,7 @@ jobs:
       - name: Upload Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-windows-x64-feiq-v0.4.34.16
+          name: multica-desktop-windows-x64-${{ inputs.artifact_label }}
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.blockmap
@@ -190,7 +216,7 @@ jobs:
       - name: Upload Desktop update service artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multica-desktop-update-service-feiq-v0.4.34.16
+          name: multica-desktop-update-service-${{ inputs.artifact_label }}
           path: artifacts/desktop-update-service/
           compression-level: 0
           retention-days: 14
