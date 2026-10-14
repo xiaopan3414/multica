@@ -48,6 +48,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          git config core.autocrlf false
+          git config core.eol lf
           $archive = Join-Path $env:RUNNER_TEMP "multica-committed-source.tar"
           git -c core.autocrlf=false -c core.eol=lf archive --format=tar --output=$archive HEAD
           if ($LASTEXITCODE -ne 0) { throw "Git source archive failed." }
@@ -99,6 +101,26 @@ jobs:
 
       - name: Typecheck Desktop and shared packages
         run: pnpm typecheck
+
+      - name: Verify clean committed source before packaging
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git status --short
+          git diff --stat
+          $archive = Join-Path $env:RUNNER_TEMP "multica-committed-source.tar"
+          tar -xf $archive -C $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { throw "Committed source restoration failed." }
+          node scripts/verify-git-source-archive.mjs $archive $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { throw "Pre-package Git blob verification failed." }
+          git update-index --refresh
+          if ($LASTEXITCODE -ne 0) { throw "Source index differs from committed archive." }
+          git diff --exit-code HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Uncommitted source changes before packaging." }
+          $description = git describe --tags --match 'v[0-9]*' --always --dirty
+          if ($LASTEXITCODE -ne 0 -or $description.EndsWith("-dirty")) {
+            throw "Desktop release source must be clean."
+          }
 
       - name: Package unsigned Windows x64 installer
         working-directory: apps/desktop
