@@ -253,8 +253,8 @@ func TestPrivateAgentWorkingDirectoryOverridesProjectResource(t *testing.T) {
 	if !assignment.PrivateAgent {
 		t.Fatal("private agent folder assignment must preserve its local-only source")
 	}
-	if localDirectoryAssignmentLockExempt(Task{ChatSessionID: "chat-1"}, assignment) {
-		t.Fatal("private agent folder chat tasks must serialize with other tasks on the path")
+	if !localDirectoryAssignmentLockExempt(Task{ChatSessionID: "chat-1"}, assignment) {
+		t.Fatal("private agent folder chat tasks must preserve configured chat concurrency")
 	}
 	if d.shouldRegisterTaskRepos(task) {
 		t.Fatal("private agent folder task must not start task repository sync")
@@ -1141,6 +1141,17 @@ func TestLocalDirectoryLockExempt(t *testing.T) {
 // what stamps the GC meta; freeing the lock by returning no assignment would
 // have moved chat out of the repo it was asked about.
 func TestChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T) {
+	for _, private := range []bool{false, true} {
+		name := "project resource"
+		if private {
+			name = "private agent directory"
+		}
+		t.Run(name, func(t *testing.T) { testChatTaskSkipsPathMutexButKeepsAssignment(t, private) })
+	}
+}
+
+func testChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T, private bool) {
+	t.Helper()
 	t.Parallel()
 
 	const daemonID = "d-mine"
@@ -1155,9 +1166,18 @@ func TestChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T) {
 
 	worker := Task{ID: "worker-task", IssueID: "issue-1", ProjectResources: resources}
 	chat := Task{ID: "chat-task", ChatSessionID: "sess-1", ProjectResources: resources}
+	if private {
+		worker.AgentID = "agent-1"
+		chat.AgentID = "agent-1"
+		worker.AgentWorkingDirectory = tmp
+		chat.AgentWorkingDirectory = tmp
+		worker.AgentWorkingDirectoryResolved = true
+		chat.AgentWorkingDirectoryResolved = true
+	}
+	d := &Daemon{cfg: Config{DaemonID: daemonID}}
 
 	// Property 1: the chat task still binds to the user's directory.
-	chatAssignment, err := localDirectoryAssignmentForTask(chat, daemonID)
+	chatAssignment, err := d.localDirectoryAssignmentForTask(chat)
 	if err != nil {
 		t.Fatalf("chat assignment: %v", err)
 	}
@@ -1170,6 +1190,9 @@ func TestChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T) {
 	if chatAssignment.UsesWorktree() {
 		t.Fatal("chat assignment reports worktree mode for an in_place resource")
 	}
+	if chatAssignment.PrivateAgent != private {
+		t.Fatalf("private assignment = %v, want %v", chatAssignment.PrivateAgent, private)
+	}
 
 	// The exempt path never calls the server, but a REGRESSION would: it would
 	// park and post waiting_local_directory. Wiring a real client is what makes
@@ -1179,7 +1202,7 @@ func TestChatTaskSkipsPathMutexButKeepsAssignment(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	d := &Daemon{
+	d = &Daemon{
 		cfg:                Config{DaemonID: daemonID},
 		client:             NewClient(srv.URL),
 		localPathLocks:     NewLocalPathLocker(),

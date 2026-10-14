@@ -3562,7 +3562,7 @@ func (s *TaskService) RequeueTaskAfterClaimFailure(ctx context.Context, task db.
 //     invalidation version for the rest BEFORE the candidate SELECT;
 //  4. list queued candidates across the non-empty set (one SELECT);
 //  5. mark still-empty runtimes so their next idle poll skips Postgres;
-//  6. claim per distinct agent via the runtime-scoped helper, preserving
+//  6. fill available slots via the runtime-scoped helper, preserving
 //     per-(issue, agent) serialization, the agent concurrency cap, and every
 //     dispatch side effect until maxTasks is reached.
 //
@@ -3721,18 +3721,18 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 		}
 	}
 
-	// 6. Claim per distinct agent through the runtime-scoped helper, preserving
+	// 6. Drain each eligible agent/runtime through the runtime-scoped helper, preserving
 	// per-(issue, agent) serialization, capacity caps, and dispatch side effects.
-	triedAgents := make(map[string]struct{}, len(candidates))
+	type claimScope struct{ agentID, runtimeID pgtype.UUID }
+	blockedScopes := make(map[claimScope]struct{})
 	for i := range candidates {
 		if len(claimed) >= maxTasks {
 			break
 		}
-		agentKey := util.UUIDToString(candidates[i].AgentID)
-		if _, tried := triedAgents[agentKey]; tried {
+		scope := claimScope{candidates[i].AgentID, candidates[i].RuntimeID}
+		if _, blocked := blockedScopes[scope]; blocked {
 			continue
 		}
-		triedAgents[agentKey] = struct{}{}
 
 		task, err := s.claimTask(ctx, candidates[i].AgentID, candidates[i].RuntimeID)
 		if err != nil {
@@ -3749,6 +3749,9 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 			return nil, fmt.Errorf("claim task: %w", err)
 		}
 		if task == nil {
+			// Capacity or conversation serialization can block the remaining
+			// candidates in this scope. Recheck on the next batch, not per row.
+			blockedScopes[scope] = struct{}{}
 			continue
 		}
 		// The SQL claim is scoped to the candidate runtime. Retain this guard as

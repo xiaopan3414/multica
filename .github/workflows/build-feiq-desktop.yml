@@ -80,9 +80,9 @@ jobs:
           src/renderer/src/components/private-agent-working-directory.test.tsx
           src/renderer/src/components/daemon-settings-tab.test.tsx
 
-      - name: Test CLI workspace cleanup safety
+      - name: Test CLI chat concurrency and workspace cleanup
         working-directory: server
-        run: go test ./internal/daemon -run '^(TestRunGC_SkipsOrdinaryProjectDirectories|TestSynchronizedAgentWorkingDirectoryOverridesAndResetsLegacyMapping)$' -count=1
+        run: go test ./internal/daemon -run '^(TestRunGC_SkipsOrdinaryProjectDirectories|TestSynchronizedAgentWorkingDirectoryOverridesAndResetsLegacyMapping|TestChatTaskSkipsPathMutexButKeepsAssignment|TestPrivateAgentWorking.*|TestLocalDirectory.*)$' -count=1
 
       - name: Typecheck Desktop and shared packages
         run: pnpm typecheck

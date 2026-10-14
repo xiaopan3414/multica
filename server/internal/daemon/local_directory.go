@@ -198,7 +198,8 @@ func localDirectoryLockExempt(task Task) bool {
 }
 
 func localDirectoryAssignmentLockExempt(task Task, assignment *localDirectoryAssignment) bool {
-	return assignment != nil && !assignment.PrivateAgent && localDirectoryLockExempt(task)
+	// A private mapping chooses the directory; it does not reduce chat capacity.
+	return assignment != nil && localDirectoryLockExempt(task)
 }
 
 // findLocalDirectoryAssignment scans the task's project resources for one of

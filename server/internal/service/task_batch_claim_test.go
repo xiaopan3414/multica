@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/events"
+	dbfx "github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -95,10 +96,8 @@ func batchClaimFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (r
 }
 
 // TestClaimTasksForRuntimes_MultiRuntimeDrain verifies the machine-level batch
-// claim (MUL-4257): a single call claims across all runtimes, one task per
-// agent per call (matching the singular path's dedup), routes each task to its
-// runtime, respects a subsequent drain, and reports empty once nothing is
-// queued.
+// claim drains available capacity across all runtimes in a single call,
+// routes each task to its runtime, and reports empty once nothing is queued.
 func TestClaimTasksForRuntimes_MultiRuntimeDrain(t *testing.T) {
 	ctx := context.Background()
 	pool := newTaskClaimRacePool(t)
@@ -107,33 +106,29 @@ func TestClaimTasksForRuntimes_MultiRuntimeDrain(t *testing.T) {
 	rt1, rt2 := batchClaimFixture(t, ctx, pool)
 	ids := []pgtype.UUID{util.MustParseUUID(rt1), util.MustParseUUID(rt2)}
 
-	// Call 1: one task per agent (agent1→rt1, agent2→rt2) => 2 tasks, one per runtime.
+	// Call 1: both independent tasks for agent1 and the task for agent2.
 	got1, err := svc.ClaimTasksForRuntimes(ctx, ids, 5)
 	if err != nil {
 		t.Fatalf("call1: %v", err)
 	}
-	if len(got1) != 2 {
-		t.Fatalf("call1 claimed %d tasks, want 2", len(got1))
+	if len(got1) != 3 {
+		t.Fatalf("call1 claimed %d tasks, want 3", len(got1))
 	}
 	seen := map[string]int{}
 	for _, task := range got1 {
 		seen[util.UUIDToString(task.RuntimeID)]++
 	}
-	if seen[rt1] != 1 || seen[rt2] != 1 {
-		t.Fatalf("call1 runtime distribution = %v, want one task each for rt1/rt2", seen)
+	if seen[rt1] != 2 || seen[rt2] != 1 {
+		t.Fatalf("call1 runtime distribution = %v, want rt1=2, rt2=1", seen)
 	}
 
-	// Call 2: agent1 still has a second queued task (different issue, capacity 5);
-	// agent2 is drained => exactly 1 task, on rt1.
+	// Call 2: all three tasks have already been dispatched.
 	got2, err := svc.ClaimTasksForRuntimes(ctx, ids, 5)
 	if err != nil {
 		t.Fatalf("call2: %v", err)
 	}
-	if len(got2) != 1 {
-		t.Fatalf("call2 claimed %d tasks, want 1", len(got2))
-	}
-	if util.UUIDToString(got2[0].RuntimeID) != rt1 {
-		t.Fatalf("call2 claimed runtime = %s, want rt1", util.UUIDToString(got2[0].RuntimeID))
+	if len(got2) != 0 {
+		t.Fatalf("call2 claimed %d tasks, want 0", len(got2))
 	}
 
 	// Call 3: everything dispatched => empty.
@@ -143,6 +138,65 @@ func TestClaimTasksForRuntimes_MultiRuntimeDrain(t *testing.T) {
 	}
 	if len(got3) != 0 {
 		t.Fatalf("call3 claimed %d tasks, want 0", len(got3))
+	}
+}
+
+func TestClaimTasksForRuntimes_ChatConcurrency(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		capacity int
+		maxTasks int
+		want     int
+	}{
+		{"fills six slots", 6, 10, 6},
+		{"agent capacity", 2, 10, 2},
+		{"machine capacity", 6, 3, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			pool := newTaskClaimRacePool(t)
+			f := dbfx.New(pool, "", "")
+			suffix := time.Now().UnixNano()
+			f.UserID = f.User(t, "Chat concurrency", fmt.Sprintf("chat-concurrency-%d@multica.ai", suffix))
+			f.WorkspaceID = f.Workspace(t, "Chat concurrency", fmt.Sprintf("chat-concurrency-%d", suffix))
+			f.Member(t, f.WorkspaceID, f.UserID, "owner")
+			runtimeID := f.Runtime(t, "Chat runtime")
+			agentID := f.Agent(t, "Chat agent", runtimeID, dbfx.Cols{"max_concurrent_tasks": tc.capacity})
+			for i := range 8 {
+				sessionID := f.Insert(t, "chat_session", dbfx.Cols{
+					"workspace_id": f.WorkspaceID, "agent_id": agentID, "creator_id": f.UserID,
+				})
+				for j := range 2 {
+					f.Task(t, agentID, dbfx.Cols{
+						"runtime_id": runtimeID, "chat_session_id": sessionID,
+						"context":    dbfx.Raw("'{}'::jsonb"),
+						"created_at": time.Now().Add(time.Duration(i*2+j) * time.Millisecond),
+					})
+				}
+			}
+			svc := NewTaskService(db.New(pool), pool, nil, events.New())
+			ids := []pgtype.UUID{util.MustParseUUID(runtimeID)}
+			got, err := svc.ClaimTasksForRuntimes(ctx, ids, tc.maxTasks)
+			if err != nil {
+				t.Fatalf("claim: %v", err)
+			}
+			if len(got) != tc.want {
+				t.Fatalf("claimed %d tasks, want %d", len(got), tc.want)
+			}
+			seen := map[pgtype.UUID]bool{}
+			for _, task := range got {
+				if seen[task.ChatSessionID] {
+					t.Fatal("claimed two turns from the same chat session")
+				}
+				seen[task.ChatSessionID] = true
+			}
+			if tc.want == tc.capacity {
+				more, err := svc.ClaimTasksForRuntimes(ctx, ids, tc.maxTasks)
+				if err != nil || len(more) != 0 {
+					t.Fatalf("claim at capacity: got=%d err=%v", len(more), err)
+				}
+			}
+		})
 	}
 }
 

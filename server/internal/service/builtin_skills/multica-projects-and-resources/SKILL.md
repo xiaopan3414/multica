@@ -55,7 +55,9 @@ multica project resource remove <project-id> <resource-id> --output json
 ```
 
 `--execution-mode` decides how tasks share a `local_directory`. `in_place` (default) runs the agent in the user's
-directory, one task at a time; a second task waits in `waiting_local_directory`. `worktree` gives each task its own
+directory. Issue tasks serialize on the directory lock; chat sessions run concurrently up to the agent and daemon
+capacity, including sessions using a private per-agent folder. Turns within the same session remain sequential.
+Concurrent chats share the working copy, so coordinate overlapping edits. `worktree` gives each task its own
 git worktree of that repo, so tasks run concurrently and each delivers its work as an `agent/<agent>/<task>` branch
 in the user's repo instead of editing the working copy. `worktree` requires the path to be a git repository with at
 least one commit; tasks fail with an explicit error otherwise. The gate is the `local-worktree-v1` capability the
