@@ -3,6 +3,7 @@ import { api } from "../api";
 import { useWorkspaceId } from "../hooks";
 import { chatKeys, sortChatSessions, QUICK_ACTIONS_PENDING_TIMEOUT_MS } from "./queries";
 import { createLogger } from "../logger";
+import { deleteChatSessions } from "./batch-delete";
 import type {
   ChatFolder,
   ChatSession,
@@ -481,6 +482,28 @@ export function useDeleteChatSession() {
     onSettled: (_data, _err, sessionId) => {
       logger.debug("deleteChatSession.settled", { sessionId });
       qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+/** Only remove confirmed successes, so partial failures cannot restore deleted rows. */
+export function useDeleteChatSessions() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+  return useMutation({
+    retry: false,
+    mutationFn: ({ sessionIds, onProgress }: {
+      sessionIds: string[];
+      onProgress?: (completed: number) => void;
+    }) => deleteChatSessions(sessionIds, async (id) => {
+      await api.deleteChatSession(id);
+      await qc.cancelQueries({ queryKey: chatKeys.sessions(wsId) });
+      qc.setQueryData<ChatSession[]>(chatKeys.sessions(wsId),
+        (old) => old?.filter((s) => s.id !== id));
+    }, onProgress),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+      qc.invalidateQueries({ queryKey: chatKeys.pendingTasks(wsId) });
     },
   });
 }

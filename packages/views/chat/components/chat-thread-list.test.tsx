@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { Agent, ChatSession } from "@multica/core/types";
 import enChat from "../../locales/en/chat.json";
@@ -17,6 +17,17 @@ import enIssues from "../../locales/en/issues.json";
 
 const setActiveSession = vi.fn();
 const archiveMutate = vi.fn();
+const batchMutateAsync = vi.fn();
+const deleteMutate = vi.fn();
+let collapsedIds: string[] = [];
+let grouping: "agent" | "folder" = "agent";
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((fn) => fn());
+const toggleCollapsed = (id: string) => {
+  collapsedIds = collapsedIds.includes(id) ? collapsedIds.filter((v) => v !== id) : [...collapsedIds, id];
+  notify();
+};
+const setGrouping = (value: "agent" | "folder") => { grouping = value; notify(); };
 
 vi.mock("../../common/actor-avatar", () => ({
   ActorAvatar: ({ actorId }: { actorId: string }) => (
@@ -36,22 +47,20 @@ vi.mock("@multica/core/api", () => ({
   api: { cancelTaskById: vi.fn() },
 }));
 
-vi.mock("@multica/core/chat", () => ({
-  useChatStore: (selector: (s: {
-    setActiveSession: typeof setActiveSession;
-    collapsedChatFolderIds: string[];
-    toggleChatFolderCollapsed: () => void;
-  }) => unknown) => selector({
-    setActiveSession,
-    collapsedChatFolderIds: [],
-    toggleChatFolderCollapsed: vi.fn(),
-  }),
-}));
+vi.mock("@multica/core/chat", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return { useChatStore: (selector: (s: object) => unknown) => useSyncExternalStore(
+    (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
+    () => selector({ setActiveSession, collapsedChatFolderIds: collapsedIds,
+      toggleChatFolderCollapsed: toggleCollapsed, chatGrouping: grouping, setChatGrouping: setGrouping }),
+  ) };
+});
 
 vi.mock("@multica/core/chat/mutations", () => ({
   useCreateChatFolder: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteChatFolder: () => ({ mutate: vi.fn(), isPending: false }),
-  useDeleteChatSession: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteChatSession: () => ({ mutate: deleteMutate, isPending: false }),
+  useDeleteChatSessions: () => ({ mutateAsync: batchMutateAsync, isPending: false }),
   useReorderChatFolders: () => ({ mutate: vi.fn(), isPending: false }),
   useSetChatSessionFolder: () => ({ mutate: vi.fn(), isPending: false }),
   useSetChatSessionPinned: () => ({ mutate: vi.fn(), isPending: false }),
@@ -123,6 +132,81 @@ function renderList(
 }
 
 const ARCHIVE_LABEL = enChat.list.archive;
+
+beforeEach(() => {
+  setActiveSession.mockClear();
+  collapsedIds = [];
+  grouping = "agent";
+  batchMutateAsync.mockReset();
+  deleteMutate.mockReset();
+});
+
+describe("ChatThreadList grouping and batch deletion", () => {
+  it("groups by agent ID, including agents with identical names, and collapses each independently", () => {
+    renderList(null, { renderedSessions: [...sessions, makeSession({ id: "other", agent_id: "agent-2" })],
+      renderedAgents: [agent, { ...agent, id: "agent-2" }] });
+    const headers = screen.getAllByRole("button", { name: "Collapse Alpha" });
+    expect(headers).toHaveLength(2);
+    fireEvent.click(headers[0]!);
+    expect(screen.queryByText("Chat s1")).not.toBeInTheDocument();
+    expect(screen.getByText("Chat other")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Alpha" }));
+    expect(screen.getByText("Chat s1")).toBeInTheDocument();
+  });
+
+  it("selects a collapsed group without opening a chat, confirms count, and preserves failed selections", async () => {
+    batchMutateAsync.mockResolvedValue({ deletedIds: ["s1", "s3"], failedIds: ["s2"] });
+    const { onSelectSession } = renderList("s2");
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select group Alpha" }));
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: enChat.list.delete }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByText("Delete 3 chats?")).toBeInTheDocument();
+    expect(batchMutateAsync).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: enChat.list.delete }));
+    await waitFor(() => expect(screen.getByText("Deleted 2 chats. 1 could not be deleted and remain selected. Try again.")).toBeInTheDocument());
+    expect(batchMutateAsync.mock.calls[0]![0].sessionIds).toEqual(["s1", "s2", "s3"]);
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(onSelectSession).not.toHaveBeenCalled();
+    expect(setActiveSession).not.toHaveBeenCalled();
+  });
+
+  it("canceling the confirmation deletes nothing", () => {
+    renderList(null);
+    fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Chat s1" }));
+    fireEvent.click(screen.getByRole("button", { name: enChat.list.delete }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: enChat.list.cancel }));
+    expect(batchMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("waits for successful deletion before clearing the active conversation", async () => {
+    let finish!: (result: { deletedIds: string[]; failedIds: string[] }) => void;
+    batchMutateAsync.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    renderList("s1");
+    fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Chat s1" }));
+    fireEvent.click(screen.getByRole("button", { name: enChat.list.delete }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: enChat.list.delete }));
+    expect(setActiveSession).not.toHaveBeenCalled();
+    finish({ deletedIds: ["s1"], failedIds: [] });
+    await waitFor(() => expect(setActiveSession).toHaveBeenCalledWith(null));
+  });
+
+  it("limits select-all to the current archive view", async () => {
+    batchMutateAsync.mockResolvedValue({ deletedIds: ["old"], failedIds: [] });
+    renderList(null, { renderedSessions: [...sessions, makeSession({ id: "old", status: "archived" })] });
+    fireEvent.click(screen.getByRole("button", { name: /Archived/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all in this list" }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: enChat.list.delete })[0]!);
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: enChat.list.delete }));
+    await waitFor(() => expect(batchMutateAsync.mock.calls[0]![0].sessionIds).toEqual(["old"]));
+  });
+});
 
 describe("ChatThreadList archive delegation", () => {
   beforeEach(() => {
@@ -209,7 +293,7 @@ describe("ChatThreadList agent identity", () => {
       renderedAgents: [longNameAgent],
     });
 
-    const name = screen.getByText(longName);
+    const name = screen.getAllByText(longName).find((element) => element.className.includes("max-w-[40%]"))!;
     expect(name.className).toContain("max-w-[40%]");
     expect(name.className).toContain("truncate");
     expect(screen.getByText("Latest project update")).toBeInTheDocument();

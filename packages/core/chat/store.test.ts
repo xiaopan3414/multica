@@ -16,6 +16,19 @@ function memStorage(): StorageAdapter {
   };
 }
 
+describe("chat grouping preferences", () => {
+  it("defaults to agent groups and restores grouping and collapsed agent IDs", () => {
+    const storage = memStorage();
+    const first = createChatStore({ storage });
+    expect(first.getState().chatGrouping).toBe("agent");
+    first.getState().setChatGrouping("folder");
+    first.getState().toggleChatFolderCollapsed("agent:history:a");
+    const restored = createChatStore({ storage });
+    expect(restored.getState().chatGrouping).toBe("folder");
+    expect(restored.getState().collapsedChatFolderIds).toContain("agent:history:a");
+  });
+});
+
 function makeAttachment(id: string): Attachment {
   return {
     id,

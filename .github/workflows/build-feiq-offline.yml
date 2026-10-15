@@ -72,6 +72,7 @@ jobs:
           go test ./internal/handler -run '^(TestClientIPForRateLimit_.*|TestRemoteAddrHost|TestGetConfigExposesPrivateDeploymentAuthUISettings|TestSendCodeResendCooldownCanBeDisabled|TestVerificationCodeLoginDomainAppliesToExistingUsers|TestAgentWorkingDirectoryAPI.*|TestClaimTaskByRuntimeCarriesSynchronizedAgentWorkingDirectory|TestCreateAgent_(WorkspaceOwnerDelegatesOwnerToPublicRuntimeOwner|RejectsDelegatedOwner.*|RejectsPrivateRuntimeForNonOwner|AllowsPublicRuntimeForPlainMember)|TestCreateChatSessionPublishesCreatedAfterCommit|TestChatSessionAgentOwnerCanReadAndContinue|TestHasPendingChatTasks_UsesChatParticipantBoundary)$' -count=1
           go test ./internal/handler -run '^(TestExtractVCSWebhookMetadataGitLabPush|TestVCSWebhook_GitLabPushDeliveryAudit|TestVCSWebhook_InvalidGitLabTokenDoesNotAudit)$' -count=1
           go test ./internal/handler -run '^TestChatFolder' -count=1
+          go test ./internal/handler -run '^TestDeleteChatSession' -count=1
           go test ./cmd/server -run '^(TestRegisterListeners_ChatSession(Created.*|OrganizedGoesOnlyToCreator)|TestScopeAuthorizer_.*)$' -count=1
 
       - name: Test chat scheduling capacity
@@ -84,7 +85,7 @@ jobs:
 
       - name: Test core configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts api/client.test.ts api/vcs-deliveries.test.ts agents/draft.test.ts agents/stored-draft.test.ts chat/store.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts api/client.test.ts api/vcs-deliveries.test.ts agents/draft.test.ts agents/stored-draft.test.ts chat/store.test.ts chat/batch-delete.test.ts chat/batch-mutations.test.tsx platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
 
       - name: Test shared views
         working-directory: packages/views

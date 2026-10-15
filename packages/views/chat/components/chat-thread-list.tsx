@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArchiveRestore,
   Check,
+  CheckSquare,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -26,6 +27,7 @@ import {
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
+import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -69,6 +71,7 @@ import {
   useCreateChatFolder,
   useDeleteChatFolder,
   useDeleteChatSession,
+  useDeleteChatSessions,
   useReorderChatFolders,
   useSetChatSessionFolder,
   useSetChatSessionArchived,
@@ -124,10 +127,9 @@ function toPreview(content: string): string {
  * Two views, toggled locally: the default "history" view lists active chats and
  * hovering a row reveals pin + archive (or stop, while running) — archiving is
  * the reversible, one-click default so nothing is destroyed by accident. A
- * footer entry ("Archived · N") switches to the "archived" view, which lists
- * archived chats and is the ONLY place a chat can be hard-deleted (hover →
- * unarchive + delete). Both views read the same flat sessions cache and split
- * on `status` locally.
+ * footer entry ("Archived · N") switches to archived chats. Both views support
+ * explicit selection and confirmed batch deletion; individual delete remains
+ * an archive-row action. Both read the same cache and split on `status` locally.
  */
 export function ChatThreadList({
   sessions,
@@ -164,6 +166,8 @@ export function ChatThreadList({
   const folders = Array.isArray(folderData) ? folderData : [];
   const collapsedFolderIds = useChatStore((s) => s.collapsedChatFolderIds);
   const toggleFolderCollapsed = useChatStore((s) => s.toggleChatFolderCollapsed);
+  const grouping = useChatStore((s) => s.chatGrouping) ?? "agent";
+  const setGrouping = useChatStore((s) => s.setChatGrouping);
 
   // Split the flat cache locally: active chats fill the default history view,
   // archived chats fill the "Archived" view. Both sorted pinned-first (then by
@@ -186,9 +190,51 @@ export function ChatThreadList({
   // (last chat unarchived / deleted) so we never strand the user on an empty
   // archive.
   const [view, setView] = useState<"history" | "archived">("history");
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchFeedback, setBatchFeedback] = useState("");
+  const batchDelete = useDeleteChatSessions();
+  const selectionScope = useRef(0);
+  const visibleSessions = view === "archived" ? archivedSessions : historySessions;
+  const selectedSessions = visibleSessions.filter((s) => selectedIds.includes(s.id));
+  // A filter/view/workspace change starts a new selection scope.
   useEffect(() => {
-    if (view === "archived" && archivedSessions.length === 0) setView("history");
-  }, [view, archivedSessions.length]);
+    selectionScope.current += 1;
+    setSelectedIds([]);
+    setSelecting(false);
+    setConfirmBatchDelete(false);
+    setBatchFeedback("");
+    return () => { selectionScope.current += 1; };
+  }, [wsId, view, agentFilterId]);
+  const toggleSelection = (ids: string[]) => {
+    const allSelected = ids.every((id) => selectedIds.includes(id));
+    setSelectedIds((current) => allSelected
+      ? current.filter((id) => !ids.includes(id))
+      : [...new Set([...current, ...ids])]);
+    setBatchFeedback("");
+  };
+  const handleBatchDelete = async () => {
+    const scope = selectedSessions.map((s) => s.id);
+    if (scope.length === 0 || batchDelete.isPending) return;
+    setBatchProgress(0);
+    setBatchTotal(scope.length);
+    const generation = selectionScope.current;
+    const result = await batchDelete.mutateAsync({ sessionIds: scope, onProgress: setBatchProgress });
+    if (generation !== selectionScope.current) return;
+    if (activeSessionId && result.deletedIds.includes(activeSessionId)) setActiveSession(null);
+    setSelectedIds(result.failedIds);
+    setConfirmBatchDelete(false);
+    setBatchFeedback(result.failedIds.length
+      ? t(($) => $.list.batch_failed, { deleted: result.deletedIds.length, failed: result.failedIds.length })
+      : t(($) => $.list.batch_done, { count: result.deletedIds.length }));
+    if (result.failedIds.length === 0) setSelecting(false);
+  };
+  useEffect(() => {
+    if (view === "archived" && archivedSessions.length === 0 && !batchDelete.isPending) setView("history");
+  }, [view, archivedSessions.length, batchDelete.isPending]);
 
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingStopId, setConfirmingStopId] = useState<string | null>(null);
@@ -230,8 +276,8 @@ export function ChatThreadList({
 
   const handleConfirmDelete = (session: ChatSession) => {
     const sessionId = session.id;
-    if (activeSessionId === sessionId) setActiveSession(null);
     deleteSession.mutate(sessionId, {
+      onSuccess: () => { if (activeSessionId === sessionId) setActiveSession(null); },
       onSettled: () => setConfirmingDeleteId(null),
     });
   };
@@ -245,7 +291,7 @@ export function ChatThreadList({
     const name = folderName.trim();
     if (!name || !folderEditor) return;
     if (folderEditor.mode === "create") {
-      createFolder.mutate(name, { onSuccess: () => setFolderEditor(null) });
+      createFolder.mutate(name, { onSuccess: () => { setFolderEditor(null); setGrouping("folder"); } });
       return;
     }
     updateFolder.mutate(
@@ -427,6 +473,10 @@ export function ChatThreadList({
         aria-current={isCurrent ? "true" : undefined}
         tabIndex={0}
         onClick={(e) => {
+          if (selecting) {
+            if (!batchDelete.isPending) toggleSelection([session.id]);
+            return;
+          }
           if (isConfirmingAction || e.defaultPrevented) return;
           // Plain click keeps the master-detail selection. On web, a modifier
           // click opens the session as its own browser tab. Desktop tabs
@@ -450,6 +500,7 @@ export function ChatThreadList({
           onSelectSession(session);
         }}
         onAuxClick={(e) => {
+          if (selecting) return;
           if (isConfirmingAction || e.defaultPrevented || e.button !== 1) return;
           if (openInNewTab) return; // desktop: no second chat tab exists
           const href = sessionHref(session.id);
@@ -459,7 +510,11 @@ export function ChatThreadList({
         }}
         onKeyDown={(e) => {
           if (isConfirmingAction) return;
-          handleRowActivationKey(e, () => onSelectSession(session));
+          handleRowActivationKey(e, () => {
+            if (selecting) {
+              if (!batchDelete.isPending) toggleSelection([session.id]);
+            } else onSelectSession(session);
+          });
         }}
         className={cn(
           // Fixed height so nothing (hover actions, confirm prompts) can change
@@ -471,6 +526,16 @@ export function ChatThreadList({
       >
         {/* Thin ring keeps photo + fallback avatars reading as the same circle
             (the fallback's faint bg otherwise looks smaller). */}
+        {selecting && (
+          <Checkbox
+            aria-label={t(($) => $.list.select_chat, { title: titleText })}
+            checked={selectedIds.includes(session.id)}
+            disabled={batchDelete.isPending}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onCheckedChange={() => toggleSelection([session.id])}
+          />
+        )}
         {agent ? (
           <ActorAvatar actorType="agent" actorId={agent.id} size="lg" enableHoverCard className="ring-1 ring-inset ring-border" />
         ) : (
@@ -554,7 +619,7 @@ export function ChatThreadList({
             below, which a pointer without hover can never reach. It takes real
             layout space (rather than overlaying the preview) and gives way to
             the hover strip on a hover-capable pointer. */}
-        {!isConfirmingAction && (
+        {!isConfirmingAction && !selecting && (
           <RowActionsMenu
             label={t(($) => $.list.row_actions_aria)}
             groups={[rowActions]}
@@ -564,7 +629,7 @@ export function ChatThreadList({
         {/* Hover actions — absolutely positioned so showing/hiding them never
             changes the row height (which was making the list jump). Keyboard
             focus reveals them too, so they are reachable without a mouse. */}
-        {!isConfirmingAction && (
+        {!isConfirmingAction && !selecting && (
           <div className="absolute inset-y-0 right-1 hidden items-center gap-0.5 rounded-md bg-gradient-to-l from-accent from-40% to-transparent pl-10 pr-1 [@media(hover:hover)]:group-hover/row:flex [@media(hover:hover)]:group-focus-within/row:flex">
             {rowActions.map((action) => (
               <RowAction
@@ -583,11 +648,11 @@ export function ChatThreadList({
 
   // Archived view: a back header, then the archived rows. Delete lives only
   // here (via each row's hover actions).
-  if (view === "archived") {
-    return (
+  const archivedHeader = view === "archived" && (
       <>
         <button
           type="button"
+          disabled={batchDelete.isPending}
           onClick={() => setView("history")}
           className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-caption font-medium text-muted-foreground outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
         >
@@ -597,10 +662,8 @@ export function ChatThreadList({
             {archivedSessions.length}
           </span>
         </button>
-        {archivedSessions.map(renderRow)}
       </>
-    );
-  }
+  );
 
   // History (default) view: active rows + a footer entry into the archive.
   const filterAgents = agents.filter((agent) =>
@@ -608,17 +671,18 @@ export function ChatThreadList({
   );
   const selectedFilterAgent = agentFilterId ? agentById.get(agentFilterId) : null;
   const historyToolbar = (
-    <div className="mb-1 flex h-9 items-center gap-1 px-1">
+    <div className="mb-1 flex min-h-9 flex-wrap items-center gap-1 px-1">
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
             <Button
               type="button"
+              disabled={batchDelete.isPending}
               variant={agentFilterId ? "brandSubtle" : "ghost"}
               size={selectedFilterAgent ? "sm" : "icon-sm"}
               aria-label={t(($) => $.list.filter_by_agent)}
               title={t(($) => $.list.filter_by_agent)}
-              className={selectedFilterAgent ? "min-w-0 max-w-[calc(100%-2rem)]" : undefined}
+              className={selectedFilterAgent ? "min-w-0 max-w-28" : undefined}
             >
               <Filter className="size-3.5" />
               {selectedFilterAgent && <span className="truncate">{selectedFilterAgent.name}</span>}
@@ -654,12 +718,47 @@ export function ChatThreadList({
       >
         <FolderPlus className="size-4" />
       </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={
+          <Button variant="ghost" size="sm" disabled={batchDelete.isPending}>
+            {grouping === "agent" ? t(($) => $.list.group_by_agent) : t(($) => $.list.custom_groups)}
+            <ChevronDown className="size-3.5" />
+          </Button>
+        } />
+        <DropdownMenuContent align="end">
+          <DropdownMenuRadioGroup value={grouping} onValueChange={(value) => setGrouping(value as "agent" | "folder")}>
+            <DropdownMenuRadioItem value="agent">{t(($) => $.list.group_by_agent)}</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="folder">{t(($) => $.list.custom_groups)}</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => {
+            const keys = grouping === "agent"
+              ? [...new Set(visibleSessions.map((s) => `agent:${view}:${s.agent_id}`))]
+              : [...folders.map((f) => f.id), UNGROUPED_FOLDER_KEY];
+            keys.filter((key) => !collapsedFolderIds.includes(key)).forEach(toggleFolderCollapsed);
+          }}>{t(($) => $.list.collapse_all)}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            const keys = grouping === "agent"
+              ? [...new Set(visibleSessions.map((s) => `agent:${view}:${s.agent_id}`))]
+              : [...folders.map((f) => f.id), UNGROUPED_FOLDER_KEY];
+            keys.filter((key) => collapsedFolderIds.includes(key)).forEach(toggleFolderCollapsed);
+          }}>{t(($) => $.list.expand_all)}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Button variant="ghost" size="sm" className="ml-auto" disabled={batchDelete.isPending}
+        aria-label={selecting ? t(($) => $.list.cancel) : t(($) => $.list.batch_manage)}
+        title={t(($) => $.list.batch_manage)}
+        onClick={() => { setSelecting(!selecting); setSelectedIds([]); setBatchFeedback(""); }}>
+        <CheckSquare className="size-4" />
+        <span>{selecting ? t(($) => $.list.cancel) : t(($) => $.list.batch_manage)}</span>
+      </Button>
     </div>
   );
 
-  const archivedEntry = archivedSessions.length > 0 && (
+  const archivedEntry = view === "history" && archivedSessions.length > 0 && (
     <button
       type="button"
+      disabled={batchDelete.isPending}
       onClick={() => setView("archived")}
       className="mt-1 flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-caption text-muted-foreground outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
     >
@@ -685,12 +784,22 @@ export function ChatThreadList({
     folder?: ChatFolder,
   ) => {
     const collapsed = collapsedFolderIds.includes(key);
+    const unreadCount = groupSessions.reduce((count, s) => count + (s.id === activeSessionId ? 0 : s.unread_count ?? 0), 0);
     const folderIndex = folder
       ? orderedFolders.findIndex((candidate) => candidate.id === folder.id)
       : -1;
     return (
       <section key={key} aria-label={name} className="mt-1">
         <div className="group/folder flex h-8 min-w-0 items-center gap-1 rounded-md px-1 hover:bg-accent/40">
+          {selecting && groupSessions.length > 0 && (
+            <Checkbox
+              aria-label={t(($) => $.list.select_group, { name })}
+              checked={groupSessions.every((s) => selectedIds.includes(s.id))}
+              indeterminate={groupSessions.some((s) => selectedIds.includes(s.id)) && !groupSessions.every((s) => selectedIds.includes(s.id))}
+              disabled={batchDelete.isPending}
+              onCheckedChange={() => toggleSelection(groupSessions.map((s) => s.id))}
+            />
+          )}
           <button
             type="button"
             aria-expanded={!collapsed}
@@ -707,6 +816,7 @@ export function ChatThreadList({
             )}
             <Folder className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate text-caption font-medium">{name}</span>
+            {unreadCount > 0 && <span aria-label={t(($) => $.session_history.row_subtitle.new_reply)} className="rounded-full bg-destructive/10 px-1.5 text-micro text-destructive">{unreadCount > 99 ? "99+" : unreadCount}</span>}
             <span className="shrink-0 tabular-nums text-micro text-muted-foreground">
               {groupSessions.length}
             </span>
@@ -757,7 +867,19 @@ export function ChatThreadList({
     );
   };
 
-  const groupedHistory = folders.length > 0 ? (
+  const byAgent = new Map<string, ChatSession[]>();
+  for (const session of visibleSessions) {
+    const group = byAgent.get(session.agent_id) ?? [];
+    group.push(session);
+    byAgent.set(session.agent_id, group);
+  }
+  const groupedHistory = grouping === "agent" ? (
+    [...byAgent].map(([agentId, groupSessions]) => renderGroup(
+      `agent:${view}:${agentId}`,
+      agentById.get(agentId)?.name.trim() || t(($) => $.list.unknown_agent),
+      groupSessions,
+    ))
+  ) : view === "archived" ? archivedSessions.map(renderRow) : folders.length > 0 ? (
     <>
       {orderedFolders.map((folder) => renderGroup(
         folder.id,
@@ -778,12 +900,45 @@ export function ChatThreadList({
   return (
     <>
       {historyToolbar}
-      {historySessions.length > 0 ? groupedHistory : (
+      {archivedHeader}
+      {selecting && (
+        <div className="sticky top-0 z-10 mb-2 space-y-2 rounded-md border bg-background p-2">
+          <div className="flex items-center gap-2">
+            <Checkbox aria-label={t(($) => $.list.select_all)}
+              checked={visibleSessions.length > 0 && selectedSessions.length === visibleSessions.length}
+              indeterminate={selectedSessions.length > 0 && selectedSessions.length < visibleSessions.length}
+              disabled={batchDelete.isPending || visibleSessions.length === 0}
+              onCheckedChange={() => toggleSelection(visibleSessions.map((s) => s.id))} />
+            <span className="text-caption">{t(($) => $.list.selected_count, { count: batchDelete.isPending ? batchTotal : selectedSessions.length })}</span>
+            <Button className="ml-auto" size="sm" variant="destructive"
+              disabled={batchDelete.isPending || selectedSessions.length === 0}
+              onClick={() => setConfirmBatchDelete(true)}>
+              {batchDelete.isPending ? t(($) => $.list.batch_progress, { completed: batchProgress, count: batchTotal }) : t(($) => $.list.delete)}
+            </Button>
+          </div>
+        </div>
+      )}
+      {batchFeedback && <p role="status" className="px-2 py-2 text-caption">{batchFeedback}</p>}
+      {visibleSessions.length > 0 ? groupedHistory : (
         <div className="px-2 py-1.5 text-caption text-muted-foreground">
           {agentFilterId ? t(($) => $.list.no_filter_matches) : t(($) => $.window.no_previous)}
         </div>
       )}
       {archivedEntry}
+      <AlertDialog open={confirmBatchDelete} onOpenChange={(open) => { if (!batchDelete.isPending) setConfirmBatchDelete(open); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.list.batch_confirm_title, { count: batchDelete.isPending ? batchTotal : selectedSessions.length })}</AlertDialogTitle>
+            <AlertDialogDescription>{t(($) => $.list.batch_confirm_description)}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchDelete.isPending}>{t(($) => $.list.cancel)}</AlertDialogCancel>
+            <Button variant="destructive" disabled={batchDelete.isPending || selectedSessions.length === 0} onClick={handleBatchDelete}>
+              {batchDelete.isPending ? t(($) => $.list.batch_progress, { completed: batchProgress, count: batchTotal }) : t(($) => $.list.delete)}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog
         open={folderEditor !== null}
         onOpenChange={(open) => {

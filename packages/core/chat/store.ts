@@ -17,6 +17,7 @@ const AGENT_STORAGE_KEY = "multica:chat:selectedAgentId";
 const PROJECT_STORAGE_KEY = "multica:chat:selectedProjectId";
 const SESSION_STORAGE_KEY = "multica:chat:activeSessionId";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "multica:chat:collapsedFolderIds";
+const GROUPING_STORAGE_KEY = "multica:chat:grouping";
 /** Drafts are stored as one JSON blob per workspace: { [sessionId]: text }. */
 const DRAFTS_KEY = "multica:chat:drafts";
 /** Draft attachment records per workspace: { [sessionId]: Attachment[] }. */
@@ -325,6 +326,8 @@ export interface ChatState {
   selectedProjectId: string | null;
   /** Creator-owned chat groups collapsed in this workspace. */
   collapsedChatFolderIds: string[];
+  chatGrouping: "agent" | "folder";
+  setChatGrouping: (grouping: "agent" | "folder") => void;
   /** Drafts per session: sessionId (or DRAFT_NEW_SESSION) → markdown text. */
   inputDrafts: Record<string, string>;
   /** Attachment rows referenced by each input draft. */
@@ -412,6 +415,11 @@ export function createChatStore(options: ChatStoreOptions) {
     selectedAgentId: initialAgentId,
     selectedProjectId: storage.getItem(wsKey(PROJECT_STORAGE_KEY)),
     collapsedChatFolderIds: readStringList(storage, wsKey(COLLAPSED_FOLDERS_STORAGE_KEY)),
+    chatGrouping: storage.getItem(wsKey(GROUPING_STORAGE_KEY)) === "folder" ? "folder" : "agent",
+    setChatGrouping: (grouping) => {
+      storage.setItem(wsKey(GROUPING_STORAGE_KEY), grouping);
+      set({ chatGrouping: grouping });
+    },
     inputDrafts: initialDraftSlots.inputDrafts,
     inputDraftAttachments: initialDraftSlots.inputDraftAttachments,
     appliedDraftRestoreIds: readAppliedRestores(storage, wsKey(APPLIED_RESTORES_KEY)),
@@ -706,6 +714,7 @@ export function createChatStore(options: ChatStoreOptions) {
       selectedAgentId: nextAgent,
       selectedProjectId: nextProject,
       collapsedChatFolderIds: nextCollapsedFolders,
+      chatGrouping: storage.getItem(wsKey(GROUPING_STORAGE_KEY)) === "folder" ? "folder" : "agent",
       inputDrafts: nextDrafts,
       inputDraftAttachments: nextDraftAttachments,
       appliedDraftRestoreIds: readAppliedRestores(storage, wsKey(APPLIED_RESTORES_KEY)),
