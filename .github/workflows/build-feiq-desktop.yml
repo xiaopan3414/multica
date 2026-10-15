@@ -44,14 +44,13 @@ jobs:
 
       - name: Test deployment-driven UI configuration
         working-directory: packages/core
-        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts agents/draft.test.ts agents/stored-draft.test.ts chat/store.test.ts chat/batch-delete.test.ts chat/batch-mutations.test.tsx platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
+        run: pnpm exec vitest run api/schema.test.ts api/schemas.test.ts agents/draft.test.ts agents/stored-draft.test.ts platform/auth-initializer.test.tsx realtime/use-realtime-sync-ws-instance.test.tsx
 
       - name: Test customized shared views
         working-directory: packages/views
         run: >-
           pnpm exec vitest run
           auth/login-page.test.tsx
-          chat/components/chat-thread-list.test.tsx
           agents/components/agent-working-directory-settings.test.tsx
           invitations/invitations-page.test.tsx
           layout/app-sidebar.test.tsx

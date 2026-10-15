@@ -65,6 +65,9 @@ jobs:
           agents/draft.test.ts
           agents/stored-draft.test.ts
           api/schemas.test.ts
+          chat/store.test.ts
+          chat/batch-delete.test.ts
+          chat/batch-mutations.test.tsx
 
       - name: Test customized shared views
         working-directory: packages/views
